@@ -81,6 +81,19 @@ fn decode(payload: &[u8], count: usize) -> io::Result<Vec<bool>> {
         .collect())
 }
 
+/// A saved admin setting overrides deployment defaults, without hardcoded IPs.
+pub async fn server(state: &crate::state::AppState) -> Result<(String, bool), sqlx::Error> {
+    let saved: Option<String> =
+        sqlx::query_scalar("SELECT value FROM server_settings WHERE key = 'rendezvous_server'")
+            .fetch_optional(&state.db)
+            .await?;
+    let overridden = saved.is_some();
+    Ok((
+        saved.unwrap_or_else(|| state.config.rendezvous_server.clone()),
+        overridden,
+    ))
+}
+
 pub async fn query(endpoint: &str, ids: &[String]) -> io::Result<HashMap<String, bool>> {
     if ids.is_empty() {
         return Ok(HashMap::new());

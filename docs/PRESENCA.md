@@ -10,6 +10,19 @@ responde à consulta nativa de presença. Um relatório recente da API indica
 concluir que o equipamento está offline. O tooltip explica a origem do estado.
 A lista aberta atualiza a cada 30 segundos e ao voltar à janela.
 
+## Configurar pelo painel (0.5.1+)
+
+Como administrador, abra **Devices → Presence settings**. Informe o endereço do
+mesmo servidor de ID dos clientes com a porta NAT TCP, normalmente 21115, e clique
+em **Test and save**. O endereço pode ser domínio, IP ou nome de serviço Docker;
+não existe IP fixo no código. A conexão é testada a partir do servidor RUSTBOOK e
+uma resposta inválida ou timeout impede salvar, preservando a configuração anterior.
+
+A escolha fica salva no banco desta instalação, sem reinício, e tem prioridade
+sobre `--hbbs`/variáveis de ambiente. Use **Use deployment default** para voltar ao
+padrão da implantação. Deixar o campo vazio e salvar desativa as consultas ao hbbs.
+O painel mostra quando o servidor não está configurado ou não está alcançável.
+
 ## Configurar no servidor Linux
 
 Execute como root, substituindo `SEU_SERVIDOR_ID` pelo hostname/IP do mesmo hbbs

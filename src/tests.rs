@@ -1559,3 +1559,115 @@ async fn native_login_discovery_and_post_profile_support_password_auth() {
         StatusCode::UNAUTHORIZED
     );
 }
+
+#[tokio::test]
+async fn presence_settings_are_admin_only_tested_persistent_and_used_by_peers() {
+    use tokio::io::{AsyncReadExt, AsyncWriteExt};
+    let f = Fixture::new().await;
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let endpoint = listener.local_addr().unwrap().to_string();
+    let server = tokio::spawn(async move {
+        loop {
+            let (mut socket, _) = listener.accept().await.unwrap();
+            let mut request = [0; 256];
+            assert!(socket.read(&mut request).await.unwrap() > 0);
+            socket
+                .write_all(&[0x18, 0xc2, 0x01, 0x03, 0x0a, 0x01, 0x80])
+                .await
+                .unwrap();
+        }
+    });
+    for method in ["GET", "PUT", "DELETE"] {
+        assert_eq!(
+            f.call(
+                method,
+                "/api/admin/presence",
+                &f.member,
+                json!({"server": endpoint})
+            )
+            .await
+            .0,
+            StatusCode::FORBIDDEN
+        );
+    }
+    let (_, initial) = f
+        .call("GET", "/api/admin/presence", &f.admin, Value::Null)
+        .await;
+    assert_eq!(initial["status"], "not_configured");
+    let (status, saved) = f
+        .call(
+            "PUT",
+            "/api/admin/presence",
+            &f.admin,
+            json!({"server": endpoint}),
+        )
+        .await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(saved["status"], "connected");
+    assert_eq!(saved["source"], "saved");
+    let (_, read) = f
+        .call("GET", "/api/admin/presence", &f.admin, Value::Null)
+        .await;
+    assert_eq!(read, saved);
+    let stored: String =
+        sqlx::query_scalar("SELECT value FROM server_settings WHERE key = 'rendezvous_server'")
+            .fetch_one(&f.db)
+            .await
+            .unwrap();
+    assert_eq!(stored, endpoint);
+    let (_, peers) = f
+        .call("GET", "/api/ab/peers?ab=shared", &f.admin, Value::Null)
+        .await;
+    assert_eq!(peers["data"][0]["online"], true);
+    assert_eq!(peers["data"][0]["presence_source"], "hbbs");
+    for invalid in ["https://hbbs:21115", "hbbs", "hbbs:0"] {
+        assert_eq!(
+            f.call(
+                "PUT",
+                "/api/admin/presence",
+                &f.admin,
+                json!({"server": invalid})
+            )
+            .await
+            .0,
+            StatusCode::BAD_REQUEST
+        );
+    }
+    let unavailable = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let missing = unavailable.local_addr().unwrap().to_string();
+    drop(unavailable);
+    assert_eq!(
+        f.call(
+            "PUT",
+            "/api/admin/presence",
+            &f.admin,
+            json!({"server": missing})
+        )
+        .await
+        .0,
+        StatusCode::BAD_REQUEST
+    );
+    assert_eq!(
+        f.call("GET", "/api/admin/presence", &f.admin, Value::Null)
+            .await
+            .1["server"],
+        endpoint
+    );
+    assert_eq!(
+        f.call(
+            "PUT",
+            "/api/admin/presence",
+            &f.admin,
+            json!({"server": ""})
+        )
+        .await
+        .1["status"],
+        "not_configured"
+    );
+    let (_, reset) = f
+        .call("DELETE", "/api/admin/presence", &f.admin, Value::Null)
+        .await;
+    assert_eq!(reset["source"], "deployment");
+    assert_eq!(reset["server"], "");
+    server.abort();
+}

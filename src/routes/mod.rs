@@ -6,6 +6,7 @@ pub mod frontend;
 pub mod groups;
 pub mod peer_groups;
 pub mod peers;
+pub mod presence_settings;
 pub mod system;
 pub mod tags;
 pub mod users;
@@ -20,6 +21,7 @@ pub fn api_router() -> Router<AppState> {
         .merge(devices::routes())
         .merge(ab::routes())
         .merge(peers::routes())
+        .merge(presence_settings::routes())
         .merge(peer_groups::routes())
         .merge(tags::routes())
         .merge(system::routes())

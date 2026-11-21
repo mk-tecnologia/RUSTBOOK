@@ -45,10 +45,6 @@ async function handleDelete(id: number, username: string) {
   }
 }
 
-async function toggleAdmin(user: abApi.UserItem) {
-  await run(async () => { await abApi.updateUser(user.id, { is_admin: !user.is_admin }); await fetchUsers() })
-}
-
 async function toggleStatus(user: abApi.UserItem) {
   await run(async () => { await abApi.updateUser(user.id, { status: user.status === 1 ? 0 : 1 }); await fetchUsers() })
 }
@@ -99,26 +95,21 @@ onMounted(loadUsers)
             <td class="px-6 py-3 text-sm text-gray-600 dark:text-rd-text-secondary">{{ user.name || '-' }}</td>
             <td class="px-6 py-3 text-sm text-gray-600 dark:text-rd-text-secondary">{{ user.email || '-' }}</td>
             <td class="px-6 py-3">
-              <button :disabled="pending" @click="toggleAdmin(user)" class="text-xs px-2 py-0.5 rounded" :class="user.is_admin ? 'bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-400' : 'bg-gray-100 text-gray-600 dark:bg-rd-border dark:text-rd-text-secondary'">
+              <span class="text-xs px-2 py-0.5 rounded" :class="user.is_admin ? 'bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-400' : 'bg-gray-100 text-gray-600 dark:bg-rd-border dark:text-rd-text-secondary'">
                 {{ user.is_admin ? 'Admin' : 'User' }}
-              </button>
+              </span>
             </td>
             <td class="px-6 py-3">
-              <button :disabled="pending" @click="toggleStatus(user)" class="text-xs px-2 py-0.5 rounded" :class="user.status === 1 ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400' : 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400'">
+              <span class="text-xs px-2 py-0.5 rounded" :class="user.status === 1 ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400' : 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400'">
                 {{ user.status === 1 ? 'Active' : 'Disabled' }}
-              </button>
+              </span>
             </td>
-            <td class="px-6 py-3 text-right whitespace-nowrap">
-              <button :disabled="pending" type="button" :aria-label="`Edit user ${user.username}`" @click="openEditor(user)" class="mr-3 text-sm font-medium text-rd-primary hover:text-rd-primary-hover">Edit</button>
-              <button :disabled="pending"
-                @click="handleDelete(user.id, user.username)"
-                class="text-sm text-gray-400 hover:text-rd-danger transition-colors"
-                title="Delete user"
-              >
-                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-                </svg>
-              </button>
+            <td class="px-6 py-3">
+              <div class="flex justify-end gap-2 whitespace-nowrap">
+                <button :disabled="pending" type="button" :aria-label="`Edit user ${user.username}`" @click="openEditor(user)" class="ui-button inline-flex items-center gap-1.5"><svg aria-hidden="true" class="size-4" fill="none" stroke="currentColor" stroke-width="1.6" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="m16 4 4 4M4 20l4-1L20 7a2.8 2.8 0 0 0-4-4L4 15l-1 6Z" /></svg>Edit</button>
+                <button :disabled="pending" type="button" :aria-label="`${user.status === 1 ? 'Disable' : 'Enable'} user ${user.username}`" @click="toggleStatus(user)" class="ui-button inline-flex items-center gap-1.5"><svg aria-hidden="true" class="size-4" fill="none" stroke="currentColor" stroke-width="1.6" viewBox="0 0 24 24"><path stroke-linecap="round" d="M12 3v9m-5-7a8 8 0 1 0 10 0" /></svg>{{ user.status === 1 ? 'Disable' : 'Enable' }}</button>
+                <button :disabled="pending" type="button" :aria-label="`Delete user ${user.username}`" @click="handleDelete(user.id, user.username)" class="ui-button inline-flex items-center gap-1.5 text-red-600 dark:text-red-400"><svg aria-hidden="true" class="size-4" fill="none" stroke="currentColor" stroke-width="1.6" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M4 7h16M9 7V4h6v3m-9 0 1 13h10l1-13M10 11v5m4-5v5" /></svg>Delete</button>
+              </div>
             </td>
           </tr>
         </tbody>

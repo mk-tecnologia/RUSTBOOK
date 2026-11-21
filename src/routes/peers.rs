@@ -140,9 +140,14 @@ async fn get_peers(
     }
     let mut probe_failed = false;
     let mut confirmed = HashMap::new();
-    if claims.is_admin && !state.config.rendezvous_server.is_empty() {
+    let endpoint = if claims.is_admin {
+        crate::presence::server(&state).await?.0
+    } else {
+        String::new()
+    };
+    if !endpoint.is_empty() {
         let ids: Vec<String> = peers.iter().map(|peer| peer.rustdesk_id.clone()).collect();
-        match crate::presence::query(&state.config.rendezvous_server, &ids).await {
+        match crate::presence::query(&endpoint, &ids).await {
             Ok(states) => confirmed = states,
             Err(error) => {
                 probe_failed = true;

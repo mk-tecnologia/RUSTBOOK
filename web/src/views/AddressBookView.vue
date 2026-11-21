@@ -6,6 +6,7 @@ import PeerGroupSection from '../components/peers/PeerGroupSection.vue'
 import TagPanel from '../components/tags/TagPanel.vue'
 import AddPeerDialog from '../components/peers/AddPeerDialog.vue'
 import OrganizationDialog from '../components/peers/OrganizationDialog.vue'
+import PresenceSettings from '../components/peers/PresenceSettings.vue'
 import ErrorNotice from '../components/ui/ErrorNotice.vue'
 
 const store = useAddressBookStore()
@@ -76,6 +77,7 @@ async function clearFilters() { search.value = ''; clearTimeout(timer); await st
         <button type="button" :disabled="saving || !store.abGuid" class="flex items-center gap-2 rounded-lg bg-rd-primary px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-rd-primary-hover disabled:opacity-50" @click="addPeer()"><svg aria-hidden="true" class="size-4" fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24"><path stroke-linecap="round" d="M12 5v14M5 12h14" /></svg>Add device</button>
       </div>
     </div>
+    <PresenceSettings @changed="store.refresh" />
     <ErrorNotice :message="actionError" />
     <ErrorNotice :message="store.error" retry @retry="store.init" />
     <div class="flex flex-col gap-5 lg:flex-row">

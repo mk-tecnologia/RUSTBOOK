@@ -7,6 +7,24 @@ manifesto upstream é `0.1.0`; não são inventadas releases anteriores do upstr
 
 Sem alterações pendentes.
 
+## [0.5.1] - 2026-11-21
+
+### Fixed
+
+- Janelas de edição/criação centralizadas horizontal e verticalmente, inclusive
+  após o reset de estilos do Tailwind.
+- Ações de usuários agrupadas em botões consistentes com ícone e texto:
+  Edit, Disable/Enable e Delete. Papel e status são indicadores sem ações ocultas.
+- Configuração de presença acessível no painel, com indicação explícita de
+  servidor não configurado ou inacessível, em vez de apenas Unknown na lista.
+
+### Added
+
+- Configuração de presença por instalação salva no banco, sem IP fixo, com teste
+  de protocolo antes de salvar e atualização imediata da lista.
+- Configuração restrita a administradores e opção de restaurar o padrão da
+  implantação. Backup e atualização preservam a configuração junto ao banco.
+
 ## [0.5.0] - 2026-11-21
 
 ### Fixed
