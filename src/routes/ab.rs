@@ -147,7 +147,7 @@ async fn update_ab_legacy(
     let tag_colors: std::collections::HashMap<String, i64> =
         serde_json::from_str(&ab_data.tag_colors).unwrap_or_default();
 
-    let mut tx = state.db.begin().await?;
+    let mut tx = state.db.begin_with("BEGIN IMMEDIATE").await?;
     // Legacy clients replace peer rows without knowing console device groups.
     // Restore each retained RustDesk ID's folder after replacement.
     let saved_groups: Vec<(String, Option<i64>, String)> =

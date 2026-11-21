@@ -87,3 +87,11 @@ test('store sends folder and tag associations on create/edit and protects duplic
   await assert.rejects(store.addPeer(peer), /Duplicate ID/)
   assert.equal(store.refreshKey, revision)
 })
+
+test('moving a peer with an unknown platform does not silently assign Windows', async () => {
+  const peer = { id: '456', alias: 'Unknown device', hostname: '', username: '', platform: '', tags: [], note: '', group_id: null }
+  const app = createSSRApp(Editor, { peer, groups, tags, createTag: async () => {}, busy: false })
+  const html = await renderToString(app)
+  assert.match(html, /<option value="" selected>Unknown platform<\/option>/)
+  assert.doesNotMatch(html, /<option value="Windows" selected>/)
+})

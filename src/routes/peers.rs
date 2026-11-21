@@ -225,7 +225,7 @@ async fn add_peer(
 ) -> Result<StatusOk, ApiError> {
     validate_id(&req.id)?;
     let guid = resolve_book(&state.db, claims.user_id, &guid, Access::Write).await?;
-    let mut tx = state.db.begin().await?;
+    let mut tx = state.db.begin_with("BEGIN IMMEDIATE").await?;
     validate_group(&mut tx, &guid, req.group_id.flatten()).await?;
     let peer_id: Option<i64> = sqlx::query_scalar(
         "INSERT INTO peers (ab_guid, rustdesk_id, hash, username, hostname, platform, alias, note, group_id)
@@ -271,7 +271,7 @@ async fn update_peer(
 ) -> Result<StatusOk, ApiError> {
     validate_id(&req.id)?;
     let guid = resolve_book(&state.db, claims.user_id, &guid, Access::Write).await?;
-    let mut tx = state.db.begin().await?;
+    let mut tx = state.db.begin_with("BEGIN IMMEDIATE").await?;
     validate_group(&mut tx, &guid, req.group_id.flatten()).await?;
     let peer_id: Option<i64> = sqlx::query_scalar(
         "UPDATE peers SET hash = COALESCE(?, hash), username = COALESCE(?, username),
@@ -324,7 +324,7 @@ async fn delete_peers(
 ) -> Result<StatusOk, ApiError> {
     let guid = resolve_book(&state.db, claims.user_id, &guid, Access::Write).await?;
     let ids = req.ids()?;
-    let mut tx = state.db.begin().await?;
+    let mut tx = state.db.begin_with("BEGIN IMMEDIATE").await?;
     for id in ids {
         sqlx::query("DELETE FROM peers WHERE ab_guid = ? AND rustdesk_id = ?")
             .bind(&guid)

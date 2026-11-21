@@ -7,7 +7,27 @@ manifesto upstream é `0.1.0`; não são inventadas releases anteriores do upstr
 
 Sem alterações pendentes.
 
-## [0.4.0] - 2026-11-21
+## [0.4.1] - 2026-11-21
+
+### Added
+
+- Organização dos dispositivos em grupos expansíveis por cliente ou local.
+- Criação de tags com cor e seleção de múltiplas tags ao incluir ou editar peers.
+- Busca, filtro por tag e paginação independente por grupo.
+- Migração aditiva com preservação de peers, tags e grupos administrativos existentes.
+
+### Fixed
+
+- Editar grupo ou tags de um peer com plataforma desconhecida preserva esse valor,
+  sem preencher Windows automaticamente.
+- Escritas de peers e sincronização legada adquirem o bloqueio de escrita antes de
+  validar grupos ou ler vínculos, evitando disputa de promoção de transação SQLite.
+
+Inclui a organização por grupos e tags descrita em 0.4.0. Esta é a primeira
+publicação de imagens dessa funcionalidade; a execução de preparação de 0.4.0
+foi substituída antes da publicação.
+
+## [0.4.0] - preparação da funcionalidade
 
 ### Added
 

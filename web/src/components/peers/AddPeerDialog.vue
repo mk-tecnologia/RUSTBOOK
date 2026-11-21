@@ -13,7 +13,7 @@ const props = defineProps<{
 }>()
 const emit = defineEmits<{ close: []; save: [peer: PeerForm] }>()
 const form = ref<PeerForm>({
-  id: props.peer?.id || '', alias: props.peer?.alias || '', platform: props.peer?.platform || 'Windows',
+  id: props.peer?.id || '', alias: props.peer?.alias || '', platform: props.peer ? props.peer.platform : 'Windows',
   hostname: props.peer?.hostname || '', username: props.peer?.username || '', note: props.peer?.note || '',
   tags: [...(props.peer?.tags || props.initialTags || [])], group_id: props.peer?.group_id ?? props.initialGroup ?? null,
 })
@@ -57,7 +57,7 @@ function submit() {
         </div>
         <div>
           <label for="peer-platform" class="mb-1 block text-xs font-medium">Platform</label>
-          <select id="peer-platform" v-model="form.platform" class="peer-input"><option v-for="item in platforms" :key="item" :value="item">{{ item }}</option></select>
+          <select id="peer-platform" v-model="form.platform" class="peer-input"><option v-for="item in platforms" :key="item" :value="item">{{ item || 'Unknown platform' }}</option></select>
         </div>
         <div>
           <label for="peer-group" class="mb-1 block text-xs font-medium">Device group</label>
