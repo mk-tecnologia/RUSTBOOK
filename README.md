@@ -5,7 +5,7 @@ com alterações próprias** do repositório
 [ds4a/rustdesk-address-book](https://github.com/ds4a/rustdesk-address-book),
 a partir do commit [`ca39fa3`](https://github.com/ds4a/rustdesk-address-book/commit/ca39fa3).
 É mantido de forma independente por [mk-tecnologia](https://github.com/mk-tecnologia)
-no repositório público [mk-tecnologia/rustbook](https://github.com/mk-tecnologia/rustbook),
+no repositório público [mk-tecnologia/RUSTBOOK](https://github.com/mk-tecnologia/RUSTBOOK),
 para versionar as alterações e permitir a atualização das instalações próprias.
 Os créditos pelo código original pertencem aos autores do upstream.
 Backend Rust/Axum, interface Vue 3 + TypeScript e banco SQLite. O frontend é
@@ -83,12 +83,12 @@ código ou publique uma imagem própria antes de usá-las.
 
 ## Instalação e atualização pelo GitHub
 
-O código desta continuação está em `https://github.com/mk-tecnologia/rustbook`.
+O código desta continuação está em `https://github.com/mk-tecnologia/RUSTBOOK`.
 Para preparar uma instalação com `hbbs`/`hbbr` já existentes:
 
 ```bash
-git clone https://github.com/mk-tecnologia/rustbook.git
-cd rustbook
+git clone https://github.com/mk-tecnologia/RUSTBOOK.git
+cd RUSTBOOK
 cp compose.deploy.example.yaml compose.deploy.yaml
 ```
 

@@ -70,7 +70,7 @@ upstream. Releases próprias devem definir namespace e tags imutáveis ou digest
 As regras a seguir precisam ser habilitadas no GitHub; arquivos locais não
 configuram proteções de branch:
 
-- Repositório próprio público: [mk-tecnologia/rustbook](https://github.com/mk-tecnologia/rustbook).
+- Repositório próprio público: [mk-tecnologia/RUSTBOOK](https://github.com/mk-tecnologia/RUSTBOOK).
   O `origin` aponta para ele; `upstream` preserva `ds4a/rustdesk-address-book`.
   Publique alterações próprias em `origin` e preserve o histórico original.
 - No repositório próprio, habilitar Actions, proteger `main`, exigir PR e check
