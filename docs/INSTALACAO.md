@@ -2,13 +2,16 @@
 
 ## Comando único
 
-Requisitos no servidor: Linux, acesso root/sudo, Docker Engine com Compose v2,
+Execute os comandos deste guia como **root**. Em uma conta comum, entre com
+`su -` antes de continuar. Não é necessário ter `sudo` instalado.
+
+Requisitos no servidor: Linux, acesso root, Docker Engine com Compose v2,
 Git, curl e Python 3.11 ou superior. O instalador não instala esses requisitos.
 Não é necessário instalar Rust ou Node no host: a compilação acontece no Docker.
 Reserve espaço para o build, a imagem anterior e uma cópia completa do banco.
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/mk-tecnologia/RUSTBOOK/main/scripts/install.py | sudo python3 - install latest
+curl -fsSL https://raw.githubusercontent.com/mk-tecnologia/RUSTBOOK/main/scripts/install.py | python3 - install latest
 ```
 
 Repita o mesmo comando para atualizar. `update latest` também é aceito.
@@ -50,7 +53,7 @@ de rede própria; o loopback desse container não é o loopback do host.
 Consulte as credenciais como root:
 
 ```bash
-sudo cat /opt/rustbook/.env
+cat /opt/rustbook/.env
 ```
 
 Para mudar o IP de escuta, edite `BIND_IP` nesse arquivo. Use o IP interno do
@@ -61,13 +64,13 @@ e TLS apropriados. Preserve `RUSTDESK_AB_JWT_SECRET`. Outras opções estão na
 Depois de editar a configuração:
 
 ```bash
-sudo docker compose -p rustbook --env-file /opt/rustbook/.env -f /opt/rustbook/compose.json up -d
+docker compose -p rustbook --env-file /opt/rustbook/.env -f /opt/rustbook/compose.json up -d
 ```
 
 Logs:
 
 ```bash
-sudo docker compose -p rustbook --env-file /opt/rustbook/.env -f /opt/rustbook/compose.json logs --tail=100 address-book
+docker compose -p rustbook --env-file /opt/rustbook/.env -f /opt/rustbook/compose.json logs --tail=100 address-book
 ```
 
 Mantenha a porta interna em 21114, o caminho do banco em `/data/db.sqlite3` e os
@@ -89,8 +92,8 @@ instalador. Atualizações seguintes usam apenas o comando único.
    `rustdesk-address-book-before-rustbook`, liberando o nome sem removê-lo:
 
    ```bash
-   sudo docker stop rustdesk-address-book
-   sudo docker rename rustdesk-address-book rustdesk-address-book-before-rustbook
+   docker stop rustdesk-address-book
+   docker rename rustdesk-address-book rustdesk-address-book-before-rustbook
    ```
 
 3. Prepare uma cópia de migração, por exemplo `/root/rustbook-migration`, contendo
@@ -102,7 +105,7 @@ instalador. Atualizações seguintes usam apenas o comando único.
 4. Com a origem parada, execute a importação inicial:
 
    ```bash
-   curl -fsSL https://raw.githubusercontent.com/mk-tecnologia/RUSTBOOK/main/scripts/install.py | sudo python3 - install latest --import-from /root/rustbook-migration
+   curl -fsSL https://raw.githubusercontent.com/mk-tecnologia/RUSTBOOK/main/scripts/install.py | python3 - install latest --import-from /root/rustbook-migration
    ```
 
 O instalador copia a origem para `/opt/rustbook` e preserva os arquivos originais.

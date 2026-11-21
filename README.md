@@ -12,11 +12,13 @@ autores originais foram preservados. Licença [AGPL-3.0](LICENSE).
 ## Instalar ou atualizar
 
 Em um servidor **Linux**, com **Docker Engine, Docker Compose v2, Git, curl e
-Python 3.11+** instalados, execute:
+Python 3.11+** instalados, execute **como root**:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/mk-tecnologia/RUSTBOOK/main/scripts/install.py | sudo python3 - install latest
+curl -fsSL https://raw.githubusercontent.com/mk-tecnologia/RUSTBOOK/main/scripts/install.py | python3 - install latest
 ```
+
+Se estiver usando uma conta comum, entre como root com `su -` antes de executar.
 
 **O mesmo comando instala e atualiza.** `latest` significa o código mais recente
 da branch `main`. A imagem é compilada no servidor; a primeira instalação pode
@@ -43,7 +45,7 @@ Publique esse endereço por um proxy com HTTPS. O usuário inicial é `admin`;
 consulte a senha gerada no servidor:
 
 ```bash
-sudo cat /opt/rustbook/.env
+cat /opt/rustbook/.env
 ```
 
 Esse arquivo também contém a chave JWT: mantenha-o privado. Para acesso direto
