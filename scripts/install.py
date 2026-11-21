@@ -46,7 +46,9 @@ def fetch_json(url):
 
 
 def published_build(architecture):
-    for release in fetch_json(RELEASES):
+    # GitHub may group stable/prereleases instead of returning publication order.
+    releases = sorted(fetch_json(RELEASES), key=lambda release: release.get("published_at") or "", reverse=True)
+    for release in releases:
         tag = release.get("tag_name", "")
         assets = {asset["name"]: asset["browser_download_url"] for asset in release.get("assets", [])}
         if (release.get("draft") or not re.fullmatch(r"build-[0-9a-f]{40}", tag)

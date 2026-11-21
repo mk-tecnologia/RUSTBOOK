@@ -5,7 +5,8 @@ manifesto upstream é `0.1.0`; não são inventadas releases anteriores do upstr
 
 ## [Unreleased]
 
-Sem alterações pendentes.
+- Instalador escolhe a build pela data de publicação, sem depender da ordem
+  da lista de releases retornada pelo GitHub.
 
 ## [0.5.1] - 2026-11-21
 

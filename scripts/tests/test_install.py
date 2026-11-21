@@ -288,6 +288,23 @@ class InstallTests(unittest.TestCase):
         self.assertFalse(self.compose_calls("stop"))
         self.assertFalse(any(call[0] == "git" or call[:2] == ("docker", "build") for call in self.calls))
 
+    def test_latest_build_uses_publication_time_not_api_list_order(self):
+        def release(commit, published, **extra):
+            return {"tag_name": "build-" + commit, "published_at": published, "assets": [
+                {"name": "manifest.json", "browser_download_url": f"https://example.com/{commit}/manifest.json"},
+                {"name": "image.tar.gz", "browser_download_url": f"https://example.com/{commit}/image.tar.gz"}], **extra}
+        old, newest = "a" * 40, "b" * 40
+        releases = [release(old, "2026-11-21T17:57:58Z"),
+                    release("c" * 40, "2026-11-21T19:00:00Z", draft=True),
+                    release(newest, "2026-11-21T18:18:47Z")]
+        manifest = {"commit": newest, "version": "0.5.1", "images": {"amd64": {
+            "asset": "image.tar.gz", "image": "rustbook:" + newest, "sha256": "d" * 64}}}
+        with patch.object(installer, "fetch_json", side_effect=[releases, manifest]) as fetch:
+            selected, _, url = installer.published_build("amd64")
+        self.assertEqual(selected["version"], "0.5.1")
+        self.assertIn(newest, url)
+        self.assertEqual(fetch.call_args.args[0], f"https://example.com/{newest}/manifest.json")
+
     def test_published_manifest_must_match_release_commit(self):
         release = {"tag_name": "build-" + "a" * 40, "assets": [
             {"name": "manifest.json", "browser_download_url": "https://example.com/manifest.json"}]}
