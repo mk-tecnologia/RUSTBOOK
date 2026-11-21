@@ -61,6 +61,10 @@ resultado atual do sistema como uma escolha manual. Mudanças de preferência do
 sistema são acompanhadas enquanto o modo automático está ativo. Escolhas manuais
 têm prioridade e também atualizam o color-scheme dos controles nativos.
 
+O seletor no cabeçalho usa um controle segmentado compacto com ícones de sol, lua
+e monitor. As opções são radios nativos com nomes acessíveis, seleção visível,
+foco por teclado e identificação ao passar o mouse. Não usa dropdown.
+
 O cabeçalho consulta `GET /api/version` sem cache para exibir a versão do servidor.
 Quando a API está indisponível ou o backend é antigo, mostrar "Version unavailable"
 em vez de inferir a versão instalada pelo pacote web. Essa consulta é pública e

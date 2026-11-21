@@ -25,6 +25,8 @@ vem do manifesto upstream; este arquivo não declara uma release própria public
 
 ### Changed
 
+- Seletor de tema substituído por controle segmentado com ícones, destaque da
+  seleção e navegação nativa por teclado.
 - README focado em instalação e uso; desenvolvimento, configuração e API movidos
   para documentação específica.
 - Versão do pacote web alinhada à versão `0.1.0` do produto.
