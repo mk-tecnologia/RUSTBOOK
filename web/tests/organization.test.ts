@@ -6,7 +6,7 @@ import { renderToString } from 'vue/server-renderer'
 import { createPinia, disposePinia } from 'pinia'
 
 // Compile the actual Vue/TS modules without opening a browser or a network port.
-const server = await createServer({ server: { middlewareMode: true, hmr: false, ws: false }, appType: 'custom' })
+const server = await createServer({ server: { middlewareMode: true, hmr: false, ws: false }, appType: 'custom', optimizeDeps: { noDiscovery: true, include: [] } })
 after(() => server.close())
 const { useAddressBookStore } = await server.ssrLoadModule('/src/stores/addressBook.ts') as typeof import('../src/stores/addressBook.ts')
 const { default: View } = await server.ssrLoadModule('/src/views/AddressBookView.vue')

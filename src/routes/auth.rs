@@ -14,9 +14,15 @@ use crate::state::AppState;
 
 pub fn routes() -> Router<AppState> {
     Router::new()
+        .route("/api/login-options", get(login_options))
         .route("/api/login", post(login))
         .route("/api/logout", post(logout))
-        .route("/api/currentUser", get(current_user))
+        .route("/api/currentUser", get(current_user).post(current_user))
+}
+
+// Password authentication only; the client expects a list of OIDC providers.
+async fn login_options() -> Json<Vec<String>> {
+    Json(Vec::new())
 }
 
 async fn login(
@@ -70,11 +76,8 @@ async fn login(
         access_token: token,
         token_type: "access_token".to_string(),
         user: UserPayload {
-            name: if user.name.is_empty() {
-                user.username.clone()
-            } else {
-                user.name
-            },
+            name: user.username,
+            display_name: user.name,
             email: user.email,
             is_admin: user.is_admin,
             note: String::new(),
@@ -104,7 +107,8 @@ async fn current_user(
         .ok_or_else(|| ApiError::NotFound("User not found".to_string()))?;
 
     Ok(Json(json!({
-        "name": if user.name.is_empty() { user.username } else { user.name },
+        "name": user.username,
+        "display_name": user.name,
         "email": user.email,
         "is_admin": user.is_admin,
         "note": ""

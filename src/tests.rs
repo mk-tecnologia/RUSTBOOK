@@ -590,6 +590,22 @@ fn config_rejects_unsafe_secrets_origins_and_expiry() {
     assert!(config.validate().is_err());
     config.jwt_secret = "a-valid-test-secret-with-at-least-32-characters".into();
     assert!(config.validate().is_ok());
+    for endpoint in ["hbbs:21115", "192.0.2.1:21115", "[2001:db8::1]:21115"] {
+        config.rendezvous_server = endpoint.into();
+        assert!(config.validate().is_ok(), "{endpoint}");
+    }
+    for endpoint in [
+        "https://hbbs:21115",
+        "hbbs",
+        "hbbs:0",
+        "user@hbbs:21115",
+        "hbbs:21115/path",
+        "hbbs:99999",
+    ] {
+        config.rendezvous_server = endpoint.into();
+        assert!(config.validate().is_err(), "{endpoint}");
+    }
+    config.rendezvous_server.clear();
     config.cors_origins = vec!["*".into()];
     assert!(config.validate().is_err());
     config.cors_origins = vec!["https://example.com".into()];
@@ -1412,5 +1428,134 @@ async fn device_group_pagination_is_independent_and_write_shares_can_organize() 
         .await
         .0,
         StatusCode::OK
+    );
+}
+
+fn with_presence_server(f: &mut Fixture, endpoint: String) {
+    let mut config: Config = toml::from_str("").unwrap();
+    config.jwt_secret = "test-secret-longer-than-thirty-two-characters".into();
+    config.rendezvous_server = endpoint;
+    f.app = Router::new()
+        .merge(crate::routes::api_router())
+        .with_state(AppState {
+            db: f.db.clone(),
+            config,
+        });
+}
+
+#[tokio::test]
+async fn stale_invalid_or_future_reports_do_not_prove_offline() {
+    let f = Fixture::new().await;
+    for timestamp in ["2000-01-01 00:00:00", "not-a-date", "2999-01-01 00:00:00"] {
+        sqlx::query("INSERT INTO devices(rustdesk_id,last_online) VALUES ('100',?) ON CONFLICT(rustdesk_id) DO UPDATE SET last_online=excluded.last_online")
+            .bind(timestamp).execute(&f.db).await.unwrap();
+        let (status, body) = f
+            .call("GET", "/api/ab/peers?ab=shared", &f.admin, Value::Null)
+            .await;
+        assert_eq!(status, StatusCode::OK);
+        assert!(body["data"][0].get("online").is_none());
+        assert_eq!(body["data"][0]["presence_source"], "stale");
+    }
+}
+
+#[tokio::test]
+async fn live_hbbs_presence_overrides_reports_and_never_leaks_to_non_admins() {
+    use tokio::io::{AsyncReadExt, AsyncWriteExt};
+    let mut f = Fixture::new().await;
+    sqlx::raw_sql(
+        "INSERT INTO peers(ab_guid,rustdesk_id) VALUES ('shared','200');
+        INSERT INTO devices(rustdesk_id,last_online) VALUES ('100',CURRENT_TIMESTAMP)",
+    )
+    .execute(&f.db)
+    .await
+    .unwrap();
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    with_presence_server(&mut f, listener.local_addr().unwrap().to_string());
+    let server = tokio::spawn(async move {
+        let (mut socket, _) = listener.accept().await.unwrap();
+        let mut request = [0; 4096];
+        assert!(socket.read(&mut request).await.unwrap() > 0);
+        // Native OnlineResponse bitmap: first peer offline, second peer online.
+        socket
+            .write_all(&[0x18, 0xc2, 0x01, 0x03, 0x0a, 0x01, 0x40])
+            .await
+            .unwrap();
+    });
+    let (_, body) = f
+        .call("GET", "/api/ab/peers?ab=shared", &f.admin, Value::Null)
+        .await;
+    assert_eq!(body["data"][0]["online"], false);
+    assert_eq!(body["data"][1]["online"], true);
+    assert_eq!(body["data"][0]["presence_source"], "hbbs");
+    server.await.unwrap();
+    let (_, body) = f
+        .call("GET", "/api/ab/peers?ab=shared", &f.member, Value::Null)
+        .await;
+    assert!(body["data"][0].get("online").is_none());
+    assert!(body["data"][0].get("last_seen").is_none());
+    assert_eq!(body["data"][0]["presence_source"], "unavailable");
+}
+
+#[tokio::test]
+async fn hbbs_failure_keeps_the_book_available_without_false_offline() {
+    let mut f = Fixture::new().await;
+    sqlx::query(
+        "INSERT INTO devices(rustdesk_id,last_online) VALUES ('100','2000-01-01 00:00:00')",
+    )
+    .execute(&f.db)
+    .await
+    .unwrap();
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    with_presence_server(&mut f, listener.local_addr().unwrap().to_string());
+    drop(listener);
+    let (status, body) = f
+        .call("GET", "/api/ab/peers?ab=shared", &f.admin, Value::Null)
+        .await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(body["data"][0]["alias"], "Original");
+    assert!(body["data"][0].get("online").is_none());
+    assert_eq!(body["data"][0]["presence_source"], "probe_failed");
+}
+
+#[tokio::test]
+async fn native_login_discovery_and_post_profile_support_password_auth() {
+    let f = Fixture::new().await;
+    let (status, options) = f.call("GET", "/api/login-options", "", Value::Null).await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(options, json!([]));
+    sqlx::query("UPDATE users SET name = 'Display Name' WHERE id = 2")
+        .execute(&f.db)
+        .await
+        .unwrap();
+    let (status, login) = f.call("POST", "/api/login", "", json!({"username":"member", "password":"a-secure-test-password", "id":"native", "uuid":"test", "type":"account"})).await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(login["type"], "access_token");
+    assert_eq!(login["user"]["name"], "member");
+    assert_eq!(login["user"]["display_name"], "Display Name");
+    let token = login["access_token"].as_str().unwrap();
+    let (status, post_profile) = f
+        .call(
+            "POST",
+            "/api/currentUser",
+            token,
+            json!({"id":"native", "uuid":"test"}),
+        )
+        .await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(post_profile, login["user"]);
+    assert_eq!(
+        f.call("GET", "/api/currentUser", token, Value::Null)
+            .await
+            .1,
+        post_profile
+    );
+    assert_eq!(
+        f.call("POST", "/api/currentUser", "", json!({})).await.0,
+        StatusCode::UNAUTHORIZED
+    );
+    f.call("POST", "/api/logout", token, json!({})).await;
+    assert_eq!(
+        f.call("POST", "/api/currentUser", token, json!({})).await.0,
+        StatusCode::UNAUTHORIZED
     );
 }

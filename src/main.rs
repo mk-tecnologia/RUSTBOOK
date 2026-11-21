@@ -7,6 +7,7 @@ mod db;
 mod error;
 mod models;
 mod pagination;
+mod presence;
 mod routes;
 mod state;
 

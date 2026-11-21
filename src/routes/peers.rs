@@ -125,31 +125,58 @@ async fn get_peers(
     if claims.is_admin {
         for chunk in peers.chunks(500) {
             let mut sql = sqlx::QueryBuilder::<sqlx::Sqlite>::new(
-                "SELECT rustdesk_id, unixepoch(last_online) BETWEEN unixepoch() - 120 AND unixepoch() FROM devices WHERE rustdesk_id IN (");
+                "SELECT rustdesk_id, last_online, unixepoch(last_online) BETWEEN unixepoch() - 120 AND unixepoch() FROM devices WHERE rustdesk_id IN (");
             let mut ids = sql.separated(", ");
             for peer in chunk {
                 ids.push_bind(&peer.rustdesk_id);
             }
             ids.push_unseparated(")");
-            let rows: Vec<(String, Option<bool>)> =
+            let rows: Vec<(String, String, Option<bool>)> =
                 sql.build_query_as().fetch_all(&state.db).await?;
-            statuses.extend(rows);
+            for (id, seen, fresh) in rows {
+                statuses.insert(id, (seen, fresh == Some(true)));
+            }
+        }
+    }
+    let mut probe_failed = false;
+    let mut confirmed = HashMap::new();
+    if claims.is_admin && !state.config.rendezvous_server.is_empty() {
+        let ids: Vec<String> = peers.iter().map(|peer| peer.rustdesk_id.clone()).collect();
+        match crate::presence::query(&state.config.rendezvous_server, &ids).await {
+            Ok(states) => confirmed = states,
+            Err(error) => {
+                probe_failed = true;
+                tracing::debug!("hbbs presence unavailable: {error}");
+            }
         }
     }
     Ok(Json(PeersResponse {
         data: peers
             .into_iter()
-            .map(|peer| PeerPayload {
-                tags: tags.remove(&peer.id).unwrap_or_default(),
-                group_id: peer.group_id,
-                online: statuses.remove(&peer.rustdesk_id).flatten(),
-                id: peer.rustdesk_id,
-                hash: peer.hash,
-                username: peer.username,
-                hostname: peer.hostname,
-                platform: peer.platform,
-                alias: peer.alias,
-                note: peer.note,
+            .map(|peer| {
+                let report = statuses.remove(&peer.rustdesk_id);
+                let fresh = report.as_ref().is_some_and(|(_, fresh)| *fresh);
+                let (online, source) = match confirmed.remove(&peer.rustdesk_id) {
+                    Some(value) => (Some(value), "hbbs"),
+                    None if fresh => (Some(true), "api_report"),
+                    None if probe_failed => (None, "probe_failed"),
+                    None if report.is_some() => (None, "stale"),
+                    None => (None, "unavailable"),
+                };
+                PeerPayload {
+                    tags: tags.remove(&peer.id).unwrap_or_default(),
+                    group_id: peer.group_id,
+                    online,
+                    presence_source: source.into(),
+                    last_seen: report.map(|(seen, _)| seen),
+                    id: peer.rustdesk_id,
+                    hash: peer.hash,
+                    username: peer.username,
+                    hostname: peer.hostname,
+                    platform: peer.platform,
+                    alias: peer.alias,
+                    note: peer.note,
+                }
             })
             .collect(),
         total,

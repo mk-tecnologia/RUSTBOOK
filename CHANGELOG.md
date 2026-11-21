@@ -7,6 +7,26 @@ manifesto upstream é `0.1.0`; não são inventadas releases anteriores do upstr
 
 Sem alterações pendentes.
 
+## [0.5.0] - 2026-11-21
+
+### Fixed
+
+- Login no aplicativo RustDesk: descoberta de provedores sem OIDC e perfil via POST.
+- Nome de login preservado separado do nome de exibição nos perfis de autenticação.
+- Relatórios antigos ou ausentes da API deixam de indicar falsamente Offline.
+- A lista atualiza a presença a cada 30 segundos e ao voltar à janela.
+- Falhas de consulta indicam presença desconhecida, preservando os dispositivos.
+
+### Added
+
+- Edição de usuários no painel, incluindo perfil, papel, status e senha opcional.
+- Confirmação de senha ao criar usuários ou trocar a senha, sem enviar a confirmação à API.
+- Consulta nativa de presença ao hbbs, respeitando as permissões existentes.
+- Estados Online/Offline confirmados pelo servidor de ID, atividade recente e
+  presença desconhecida, com descrição da origem e do último relatório.
+- Opção `--hbbs HOST:PORT` no instalador, persistida nas próximas atualizações
+  e protegida pelo backup e rollback da configuração.
+
 ## [0.4.1] - 2026-11-21
 
 ### Added

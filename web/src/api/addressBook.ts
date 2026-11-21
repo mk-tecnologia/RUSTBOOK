@@ -11,6 +11,8 @@ export interface Peer {
   note: string
   group_id?: number | null
   online?: boolean
+  presence_source?: 'hbbs' | 'api_report' | 'stale' | 'unavailable' | 'probe_failed'
+  last_seen?: string
 }
 
 export interface PeerGroup {

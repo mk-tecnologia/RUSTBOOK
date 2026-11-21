@@ -1,12 +1,15 @@
 <script setup lang="ts">
 import { ref, onMounted } from 'vue'
+import UserDialog from '../components/users/UserDialog.vue'
+import type { userPayload } from '../utils/userEditor'
 import ErrorNotice from '../components/ui/ErrorNotice.vue'
 import { useAsyncTask } from '../composables/useAsyncTask'
 import * as abApi from '../api/addressBook'
 
 const users = ref<abApi.UserItem[]>([])
-const showAdd = ref(false)
-const newUser = ref({ username: '', password: '', name: '', email: '', is_admin: false })
+const showEditor = ref(false)
+const editing = ref<abApi.UserItem>()
+const editorError = ref('')
 const { pending, error, run } = useAsyncTask()
 
 async function fetchUsers() {
@@ -15,16 +18,23 @@ async function fetchUsers() {
 }
 async function loadUsers() { await run(fetchUsers) }
 
-async function handleCreate() {
-  error.value = ''
-  if (!newUser.value.username || !newUser.value.password) {
-    error.value = 'Username and password are required'
-    return
-  }
+function openEditor(user?: abApi.UserItem) {
+  editing.value = user
+  editorError.value = ''
+  showEditor.value = true
+}
+async function saveUser(payload: ReturnType<typeof userPayload>) {
   await run(async () => {
-    await abApi.createUser(newUser.value)
-    newUser.value = { username: '', password: '', name: '', email: '', is_admin: false }
-    showAdd.value = false
+    editorError.value = ''
+    try {
+      if (editing.value) await abApi.updateUser(editing.value.id, payload)
+      else await abApi.createUser(payload as Parameters<typeof abApi.createUser>[0])
+    } catch (e) {
+      editorError.value = e instanceof Error ? e.message : 'Unable to save user'
+      return
+    }
+    showEditor.value = false
+    editing.value = undefined
     await fetchUsers()
   })
 }
@@ -51,7 +61,7 @@ onMounted(loadUsers)
     <div class="flex items-center justify-between mb-6">
       <h1 class="text-lg font-semibold text-gray-900 dark:text-rd-text">Users</h1>
       <button :disabled="pending"
-        @click="showAdd = true"
+        @click="openEditor()"
         class="px-4 py-2 text-sm rounded-lg bg-rd-primary hover:bg-rd-primary-hover text-white font-medium transition-colors flex items-center gap-2"
       >
         <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -64,37 +74,7 @@ onMounted(loadUsers)
     <ErrorNotice :message="error" retry @retry="loadUsers" />
     <p v-if="pending" role="status" class="my-3 text-sm text-gray-500">Working…</p>
 
-    <!-- Add user form -->
-    <form @submit.prevent="handleCreate" v-if="showAdd" class="bg-white dark:bg-rd-card border border-gray-200 dark:border-rd-border rounded-xl p-6 mb-6">
-      <h2 class="text-sm font-semibold text-gray-900 dark:text-rd-text mb-4">New User</h2>
-      <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
-        <div>
-          <label for="newUser-username" class="block text-xs font-medium text-gray-600 dark:text-rd-text-secondary mb-1">Username *</label>
-          <input id="newUser-username" maxlength="128" required v-model="newUser.username" class="w-full px-3 py-2 text-sm rounded-lg border border-gray-300 dark:border-rd-border bg-white dark:bg-rd-scaffold text-gray-900 dark:text-rd-text focus:outline-none focus:ring-2 focus:ring-rd-primary" />
-        </div>
-        <div>
-          <label for="newUser-password" class="block text-xs font-medium text-gray-600 dark:text-rd-text-secondary mb-1">Password *</label>
-          <input id="newUser-password" minlength="12" maxlength="1024" required autocomplete="new-password" v-model="newUser.password" type="password" class="w-full px-3 py-2 text-sm rounded-lg border border-gray-300 dark:border-rd-border bg-white dark:bg-rd-scaffold text-gray-900 dark:text-rd-text focus:outline-none focus:ring-2 focus:ring-rd-primary" />
-        </div>
-        <div>
-          <label for="newUser-name" class="block text-xs font-medium text-gray-600 dark:text-rd-text-secondary mb-1">Display Name</label>
-          <input id="newUser-name" maxlength="128" v-model="newUser.name" class="w-full px-3 py-2 text-sm rounded-lg border border-gray-300 dark:border-rd-border bg-white dark:bg-rd-scaffold text-gray-900 dark:text-rd-text focus:outline-none focus:ring-2 focus:ring-rd-primary" />
-        </div>
-        <div>
-          <label for="newUser-email" class="block text-xs font-medium text-gray-600 dark:text-rd-text-secondary mb-1">Email</label>
-          <input id="newUser-email" v-model="newUser.email" type="email" class="w-full px-3 py-2 text-sm rounded-lg border border-gray-300 dark:border-rd-border bg-white dark:bg-rd-scaffold text-gray-900 dark:text-rd-text focus:outline-none focus:ring-2 focus:ring-rd-primary" />
-        </div>
-      </div>
-      <div class="flex items-center gap-4 mt-4">
-        <label class="flex items-center gap-2 text-sm text-gray-700 dark:text-rd-text-secondary">
-          <input v-model="newUser.is_admin" type="checkbox" class="rounded border-gray-300 text-rd-primary focus:ring-rd-primary" />
-          Administrator
-        </label>
-        <div class="flex-1" />
-        <button :disabled="pending" type="button" @click="showAdd = false" class="px-4 py-2 text-sm rounded-lg text-gray-600 dark:text-rd-text-secondary hover:bg-gray-100 dark:hover:bg-rd-card-hover">Cancel</button>
-        <button :disabled="pending" type="submit" class="px-4 py-2 text-sm rounded-lg bg-rd-primary hover:bg-rd-primary-hover text-white font-medium">Create</button>
-      </div>
-    </form>
+    <UserDialog v-if="showEditor" :user="editing" :busy="pending" :error="editorError" @close="showEditor = false; editing = undefined" @save="saveUser" />
 
     <!-- Users table -->
     <div class="bg-white dark:bg-rd-card border border-gray-200 dark:border-rd-border rounded-xl overflow-x-auto">
@@ -128,7 +108,8 @@ onMounted(loadUsers)
                 {{ user.status === 1 ? 'Active' : 'Disabled' }}
               </button>
             </td>
-            <td class="px-6 py-3 text-right">
+            <td class="px-6 py-3 text-right whitespace-nowrap">
+              <button :disabled="pending" type="button" :aria-label="`Edit user ${user.username}`" @click="openEditor(user)" class="mr-3 text-sm font-medium text-rd-primary hover:text-rd-primary-hover">Edit</button>
               <button :disabled="pending"
                 @click="handleDelete(user.id, user.username)"
                 class="text-sm text-gray-400 hover:text-rd-danger transition-colors"

@@ -19,6 +19,9 @@ pub struct Config {
     pub cors_origins: Vec<String>,
     #[serde(default)]
     pub allow_unauthenticated_device_events: bool,
+    /// hbbs NAT/online-query TCP endpoint, normally hostname:21115.
+    #[serde(default)]
+    pub rendezvous_server: String,
 }
 
 fn default_port() -> u16 {
@@ -95,6 +98,9 @@ impl Config {
                 "Anonymous device events enabled: use only behind a trusted network/proxy"
             );
         }
+        if let Ok(value) = std::env::var("RUSTDESK_AB_RENDEZVOUS_SERVER") {
+            config.rendezvous_server = value;
+        }
         if config.jwt_secret.is_empty() {
             config.jwt_secret = default_jwt_secret();
             tracing::warn!("No JWT secret configured — generated a temporary secret; configure a persistent secret in production");
@@ -106,6 +112,19 @@ impl Config {
 
 impl Config {
     pub fn validate(&self) -> Result<(), String> {
+        if !self.rendezvous_server.is_empty() {
+            let endpoint = self
+                .rendezvous_server
+                .parse::<axum::http::uri::Authority>()
+                .map_err(|_| "Invalid rendezvous server; use hostname:21115")?;
+            if endpoint.host().is_empty()
+                || endpoint.port_u16().is_none_or(|port| port == 0)
+                || self.rendezvous_server.contains('@')
+                || self.rendezvous_server.len() > 255
+            {
+                return Err("Rendezvous server must be hostname:port without credentials".into());
+            }
+        }
         if self.jwt_secret.len() < 32 || self.jwt_secret.starts_with("change-me") {
             return Err("JWT secret must contain at least 32 characters".into());
         }

@@ -33,6 +33,7 @@ services:
     volumes:
       - ./data/ab:/data
     environment:
+      - RUSTDESK_AB_RENDEZVOUS_SERVER=hbbs:21115
       - RUSTDESK_AB_DB_PATH=/data/db.sqlite3
       - RUSTDESK_AB_JWT_SECRET=${JWT_SECRET:?Set JWT_SECRET in .env}
       - RUSTDESK_AB_ADMIN_PASSWORD=${ADMIN_PASSWORD:?Set ADMIN_PASSWORD in .env}

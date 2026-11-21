@@ -26,3 +26,7 @@ cors_origins = []
 # Compatibility option for clients that send device events without signing in.
 # Only enable on a trusted private network or behind a restricted proxy.
 allow_unauthenticated_device_events = false
+
+# Optional live presence: hbbs NAT TCP endpoint (ID port minus one).
+# Use a hostname/IP reachable from the API container, not its own loopback.
+# rendezvous_server = "rustdesk.example.com:21115"

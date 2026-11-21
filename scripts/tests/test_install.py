@@ -462,6 +462,40 @@ class InstallTests(unittest.TestCase):
             sleep.assert_called_once_with(2)
             self.assertEqual(opener.return_value.open.call_count, 2)
 
+    def test_hbbs_configuration_persists_for_following_updates(self):
+        self.existing()
+        self.app.hbbs_server = "rustdesk.example.com:21115"
+        self.app.install()
+        state = json.loads(self.app.state_file.read_text())
+        self.assertEqual(state["hbbs_server"], "rustdesk.example.com:21115")
+        second = installer.Installer(self.root, build_locally=True)
+        with patch.object(second, "wait_ready"):
+            second.install()
+        environment = json.loads(second.config.read_text())["services"]["address-book"]["environment"]
+        self.assertEqual(environment["RUSTDESK_AB_RENDEZVOUS_SERVER"], "rustdesk.example.com:21115")
+
+    def test_hbbs_legacy_failure_restores_previous_configuration(self):
+        self.legacy()
+        self.app.hbbs_server = "hbbs:21115"
+        self.ready.side_effect = RuntimeError("unhealthy")
+        with self.assertRaises(RuntimeError):
+            self.app.install()
+        environment = json.loads(self.app.config.read_text())["services"]["address-book"]["environment"]
+        self.assertNotIn("RUSTDESK_AB_RENDEZVOUS_SERVER", environment)
+        self.assertNotIn("hbbs_server", json.loads(self.app.state_file.read_text()))
+
+    def test_hbbs_change_is_applied_even_when_build_is_current(self):
+        previous = {"commit": "a" * 40, "version": "0.5.0", "image": "rustbook:current"}
+        self.app.hbbs_server = "hbbs:21115"
+        current = {"State": {"Running": True}, "Image": "image-id", "Config": {"Env": []}}
+        with patch.object(installer, "run", side_effect=[json.dumps([current])]):
+            self.assertFalse(self.app.already_current(previous, previous["commit"], previous["version"]))
+        current["Config"]["Env"] = ["RUSTDESK_AB_RENDEZVOUS_SERVER=hbbs:21115"]
+        with patch.object(installer, "run", side_effect=[json.dumps([current]), "image-id"]):
+            self.assertTrue(self.app.already_current(previous, previous["commit"], previous["version"]))
+        self.app.hbbs_server = ""
+        self.assertEqual(self.app.document("image")["services"]["address-book"]["environment"]["RUSTDESK_AB_RENDEZVOUS_SERVER"], "")
+
 
 if __name__ == "__main__":
     unittest.main()

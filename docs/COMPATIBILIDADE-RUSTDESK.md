@@ -165,3 +165,20 @@ consulta os campos conhecidos e não depende desse campo adicional. Ao atualizar
 um peer sem `group_id`, a pasta é preservada; o POST legado completo também
 preserva a pasta por RustDesk ID retido. Os testes incluem esses contratos,
 permissões, paginação, rollback de tags inválidas e exclusão de grupos sem apagar peers.
+
+## Login no cliente nativo
+
+`GET /api/login-options` é público e retorna `[]`, pois este servidor oferece
+senha e não possui provedores OIDC. Essa descoberta precede o formulário de login
+nos clientes recentes; responder 404 impede a tentativa de autenticação.
+`POST /api/login` emite a sessão. `GET` e `POST /api/currentUser` retornam o mesmo
+perfil e exigem sessão válida. `name` contém o username de login; `display_name`
+contém o nome de exibição. Logout e alterações de senha continuam revogando sessões.
+
+No painel Users, use Edit para alterar nome, email, papel, ativação ou senha.
+O username de login permanece fixo. As senhas exigem confirmação no formulário;
+deixar os dois campos vazios ao editar preserva a senha atual. Salvar apenas o
+perfil não revoga sessões por enviar um status inalterado.
+
+A presença da agenda web usa [consulta ao hbbs](PRESENCA.md). O status do
+inventário nativo `/api/peers` mantém o contrato de relatos descrito acima.

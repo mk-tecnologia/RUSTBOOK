@@ -64,12 +64,16 @@ def main():
 
     own_session = False
     try:
+        if request("GET", "/api/login-options", authenticated=False) != []:
+            raise ValueError("Password-only server must return an empty login options list")
         if args.username:
             password = os.environ.get("RUSTDESK_VERIFY_PASSWORD") or getpass.getpass("Password: ")
             login = request("POST", "/api/login", {"username": args.username, "password": password}, authenticated=False)
             token = login["access_token"]
             own_session = True
-        me = request("GET", "/api/currentUser")
+        me = request("POST", "/api/currentUser", {"id": "compatibility-check", "uuid": ""})
+        if request("GET", "/api/currentUser") != me:
+            raise ValueError("GET/POST current user mismatch")
         if not isinstance(me, dict) or type(me.get("is_admin")) is not bool:
             raise ValueError("Invalid current user profile")
         personal = request("POST", "/api/ab/personal")

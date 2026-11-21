@@ -84,7 +84,7 @@ def compose_document(image):
 
 
 class Installer:
-    def __init__(self, directory, build_locally=False):
+    def __init__(self, directory, build_locally=False, hbbs_server=None):
         self.root = directory.resolve()
         self.config = self.root / "compose.json"
         self.state_file = self.root / "install-state.json"
@@ -93,12 +93,17 @@ class Installer:
         self.deployment = None
         self.adoption = None
         self.build_locally = build_locally
+        self.hbbs_server = hbbs_server
 
     def already_current(self, previous, commit, version):
         if previous.get("commit") != commit or previous.get("version") != version:
             return False
         try:
             current = json.loads(run("docker", "inspect", CONTAINER, capture=True))[0]
+            if self.hbbs_server is not None:
+                environment = dict(item.split("=", 1) for item in current.get("Config", {}).get("Env", []) if "=" in item)
+                if environment.get("RUSTDESK_AB_RENDEZVOUS_SERVER", "") != self.hbbs_server:
+                    return False
             image_id = run("docker", "image", "inspect", previous["image"],
                            "--format", "{{.Id}}", capture=True)
             if not current["State"]["Running"] or current["Image"] != image_id:
@@ -163,14 +168,18 @@ class Installer:
     def service(self):
         return self.deployment["service"] if self.deployment else "address-book"
 
-    def document(self, image):
+    def document(self, image, apply_changes=True):
         if self.deployment:
             # Compose interpolates dollar signs even inside JSON values.
             environment = {key: value.replace("$", "$$")
                            for key, value in self.deployment["environment"].items()}
-            return {"services": {self.service: {
+            document = {"services": {self.service: {
                 "image": image, "pull_policy": "never", "environment": environment}}}
-        return compose_document(image)
+        else:
+            document = compose_document(image)
+        if apply_changes and self.hbbs_server is not None:
+            document["services"][self.service]["environment"]["RUSTDESK_AB_RENDEZVOUS_SERVER"] = self.hbbs_server.replace("$", "$$")
+        return document
 
     def compose(self, *args):
         return run(*self.compose_args(), *args)
@@ -183,6 +192,8 @@ class Installer:
     def check_ownership(self):
         if self.state_file.exists():
             state = json.loads(self.state_file.read_text())
+            if self.hbbs_server is None:
+                self.hbbs_server = state.get("hbbs_server")
             self.deployment = state.get("deployment")
             if self.deployment:
                 self.data = Path(self.deployment["data"])
@@ -422,7 +433,7 @@ class Installer:
         self.data.mkdir(mode=0o700, exist_ok=True)
         if not self.state_file.exists():
             if self.adoption:
-                write_json(self.config, self.document(previous["image"]))
+                write_json(self.config, self.document(previous["image"], apply_changes=False))
             write_json(self.state_file, previous)
         self.write_launcher()
         try:
@@ -440,6 +451,8 @@ class Installer:
             self.compose("up", "-d", "--no-deps", "--no-build", self.service)
             self.wait_ready(version, commit)
             state = {"commit": commit, "version": version, "image": image}
+            if self.hbbs_server is not None:
+                state["hbbs_server"] = self.hbbs_server
             if self.deployment:
                 state["deployment"] = self.deployment
             write_json(self.state_file, state)
@@ -460,7 +473,18 @@ def main():
     parser.add_argument("--import-from", type=Path,
                         help="Importar uma agenda isolada parada (diretório com data/ e .env).")
     parser.add_argument("--build", action="store_true", help="Compilar main localmente em vez de baixar imagem pronta.")
+    parser.add_argument("--hbbs", metavar="HOST:PORT", help="Consultar presença no hbbs (porta NAT TCP, normalmente 21115); use '' para desativar.")
     args = parser.parse_args()
+    if args.hbbs:
+        from urllib.parse import urlsplit
+        try:
+            endpoint = urlsplit("//" + args.hbbs)
+            if (not endpoint.hostname or not endpoint.port or endpoint.username or endpoint.password
+                    or endpoint.path or endpoint.query or endpoint.fragment or len(args.hbbs) > 255
+                    or any(character.isspace() for character in args.hbbs)):
+                raise ValueError()
+        except ValueError:
+            parser.error("--hbbs deve ser hostname:porta, por exemplo rustdesk.example.com:21115, sem credenciais.")
     if platform.system() != "Linux" or os.geteuid() != 0:
         parser.error("Execute como root em um servidor Linux (use su - em uma conta comum).")
     for command in (("git", "docker") if args.build else ("docker",)):
@@ -469,7 +493,7 @@ def main():
     os.umask(0o077)
     run("docker", "compose", "version")
     run("docker", "info", "--format", "{{.ServerVersion}}")
-    installer = Installer(args.directory, build_locally=args.build)
+    installer = Installer(args.directory, build_locally=args.build, hbbs_server=args.hbbs)
     installer.root.mkdir(parents=True, exist_ok=True, mode=0o700)
     # All directories share a project/container name: serialize across directories too.
     lock_directory = Path("/run/lock")

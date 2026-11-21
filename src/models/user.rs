@@ -40,6 +40,7 @@ pub struct LoginResponse {
 #[derive(Debug, Serialize)]
 pub struct UserPayload {
     pub name: String,
+    pub display_name: String,
     pub email: String,
     pub is_admin: bool,
     pub note: String,

@@ -31,6 +31,9 @@ pub struct PeerPayload {
     pub group_id: Option<i64>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub online: Option<bool>,
+    pub presence_source: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub last_seen: Option<String>,
 }
 
 /// Request to add a peer.
