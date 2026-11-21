@@ -17,8 +17,8 @@ async function handleLogin() {
   try {
     await auth.login(username.value, password.value)
     router.push('/')
-  } catch (e: any) {
-    error.value = e.message || 'Login failed'
+  } catch (e: unknown) {
+    error.value = e instanceof Error ? e.message : 'Login failed'
   } finally {
     loading.value = false
   }
@@ -26,7 +26,7 @@ async function handleLogin() {
 </script>
 
 <template>
-  <div class="min-h-screen flex items-center justify-center bg-gray-50 dark:bg-rd-scaffold">
+  <div class="min-h-screen flex items-center justify-center bg-gray-50 dark:bg-rd-scaffold p-4">
     <div class="w-full max-w-sm">
       <!-- Logo -->
       <div class="text-center mb-8">
@@ -41,14 +41,16 @@ async function handleLogin() {
 
       <!-- Form -->
       <form @submit.prevent="handleLogin" class="bg-white dark:bg-rd-card rounded-2xl p-6 shadow-sm border border-gray-200 dark:border-rd-border">
-        <div v-if="error" class="mb-4 p-3 text-sm text-red-600 bg-red-50 dark:bg-red-900/20 dark:text-red-400 rounded-lg">
+        <div role="alert" v-if="error" class="mb-4 p-3 text-sm text-red-600 bg-red-50 dark:bg-red-900/20 dark:text-red-400 rounded-lg">
           {{ error }}
         </div>
 
         <div class="space-y-4">
           <div>
-            <label class="block text-sm font-medium text-gray-700 dark:text-rd-text-secondary mb-1">Username</label>
+            <label for="login-username" class="block text-sm font-medium text-gray-700 dark:text-rd-text-secondary mb-1">Username</label>
             <input
+              id="login-username"
+              autocomplete="username"
               v-model="username"
               type="text"
               required
@@ -58,8 +60,10 @@ async function handleLogin() {
             />
           </div>
           <div>
-            <label class="block text-sm font-medium text-gray-700 dark:text-rd-text-secondary mb-1">Password</label>
+            <label for="login-password" class="block text-sm font-medium text-gray-700 dark:text-rd-text-secondary mb-1">Password</label>
             <input
+              id="login-password"
+              autocomplete="current-password"
               v-model="password"
               type="password"
               required

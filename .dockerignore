@@ -1,0 +1,13 @@
+.git
+.idea
+.claude
+.env
+.env.*
+config.toml
+data
+target
+web/node_modules
+web/dist
+**/.DS_Store
+backups
+compose.deploy.yaml

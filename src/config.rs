@@ -7,7 +7,7 @@ pub struct Config {
     pub port: u16,
     #[serde(default = "default_db_path")]
     pub db_path: String,
-    #[serde(default = "default_jwt_secret")]
+    #[serde(default)]
     pub jwt_secret: String,
     #[serde(default = "default_admin_username")]
     pub admin_username: String,
@@ -15,6 +15,10 @@ pub struct Config {
     pub admin_password: String,
     #[serde(default = "default_token_expiry_hours")]
     pub token_expiry_hours: u64,
+    #[serde(default)]
+    pub cors_origins: Vec<String>,
+    #[serde(default)]
+    pub allow_unauthenticated_device_events: bool,
 }
 
 fn default_port() -> u16 {
@@ -30,14 +34,13 @@ fn default_jwt_secret() -> String {
         .take(64)
         .map(char::from)
         .collect();
-    tracing::warn!("No JWT secret configured — using random secret (sessions won't survive restarts)");
     secret
 }
 fn default_admin_username() -> String {
     "admin".to_string()
 }
 fn default_admin_password() -> String {
-    "admin".to_string()
+    String::new()
 }
 fn default_token_expiry_hours() -> u64 {
     168 // 7 days
@@ -48,8 +51,8 @@ impl Config {
         // Try loading from config.toml, fall back to defaults
         let config_path = PathBuf::from("config.toml");
         let mut config: Config = if config_path.exists() {
-            let content = std::fs::read_to_string(&config_path)
-                .expect("Failed to read config.toml");
+            let content =
+                std::fs::read_to_string(&config_path).expect("Failed to read config.toml");
             toml::from_str(&content).expect("Failed to parse config.toml")
         } else {
             toml::from_str("").unwrap()
@@ -72,6 +75,55 @@ impl Config {
             config.admin_password = v;
         }
 
+        if let Ok(v) = std::env::var("RUSTDESK_AB_TOKEN_EXPIRY_HOURS") {
+            config.token_expiry_hours = v.parse().expect("Invalid token expiry");
+        }
+        if let Ok(v) = std::env::var("RUSTDESK_AB_CORS_ORIGINS") {
+            config.cors_origins = v
+                .split(',')
+                .map(str::trim)
+                .filter(|s| !s.is_empty())
+                .map(str::to_owned)
+                .collect();
+        }
+        if let Ok(v) = std::env::var("RUSTDESK_AB_ALLOW_UNAUTHENTICATED_DEVICE_EVENTS") {
+            config.allow_unauthenticated_device_events =
+                v.parse().expect("Expected true or false for device events");
+        }
+        if config.allow_unauthenticated_device_events {
+            tracing::warn!(
+                "Anonymous device events enabled: use only behind a trusted network/proxy"
+            );
+        }
+        if config.jwt_secret.is_empty() {
+            config.jwt_secret = default_jwt_secret();
+            tracing::warn!("No JWT secret configured — generated a temporary secret; configure a persistent secret in production");
+        }
+        config.validate().expect("Invalid server configuration");
         config
+    }
+}
+
+impl Config {
+    pub fn validate(&self) -> Result<(), String> {
+        if self.jwt_secret.len() < 32 || self.jwt_secret.starts_with("change-me") {
+            return Err("JWT secret must contain at least 32 characters".into());
+        }
+        if !(1..=720).contains(&self.token_expiry_hours) {
+            return Err("Token expiry must be between 1 and 720 hours".into());
+        }
+        for origin in &self.cors_origins {
+            let uri = origin
+                .parse::<axum::http::Uri>()
+                .map_err(|_| "Invalid CORS origin")?;
+            if !matches!(uri.scheme_str(), Some("http" | "https"))
+                || uri.authority().is_none()
+                || uri.path() != "/"
+                || uri.query().is_some()
+            {
+                return Err("CORS origins must be exact http(s) origins".into());
+            }
+        }
+        Ok(())
     }
 }

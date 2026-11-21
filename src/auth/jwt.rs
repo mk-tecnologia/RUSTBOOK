@@ -1,14 +1,16 @@
-use chrono::Utc;
 use jsonwebtoken::{decode, encode, DecodingKey, EncodingKey, Header, Validation};
 use serde::{Deserialize, Serialize};
+use std::time::{SystemTime, UNIX_EPOCH};
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct Claims {
-    pub sub: String,      // username
+    #[serde(default)]
+    pub jti: String,
+    pub sub: String, // username
     pub user_id: i64,
     pub is_admin: bool,
-    pub exp: usize,       // expiry timestamp
-    pub iat: usize,       // issued at
+    pub exp: usize, // expiry timestamp
+    pub iat: usize, // issued at
 }
 
 pub fn create_token(
@@ -18,13 +20,17 @@ pub fn create_token(
     secret: &str,
     expiry_hours: u64,
 ) -> Result<String, jsonwebtoken::errors::Error> {
-    let now = Utc::now();
+    let now = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .expect("System clock before Unix epoch")
+        .as_secs() as usize;
     let claims = Claims {
+        jti: uuid::Uuid::new_v4().to_string(),
         sub: username.to_string(),
         user_id,
         is_admin,
-        exp: (now + chrono::Duration::hours(expiry_hours as i64)).timestamp() as usize,
-        iat: now.timestamp() as usize,
+        exp: now + (expiry_hours * 3600) as usize,
+        iat: now,
     };
 
     encode(
@@ -34,10 +40,7 @@ pub fn create_token(
     )
 }
 
-pub fn validate_token(
-    token: &str,
-    secret: &str,
-) -> Result<Claims, jsonwebtoken::errors::Error> {
+pub fn validate_token(token: &str, secret: &str) -> Result<Claims, jsonwebtoken::errors::Error> {
     let token_data = decode::<Claims>(
         token,
         &DecodingKey::from_secret(secret.as_bytes()),

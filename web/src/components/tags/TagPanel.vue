@@ -87,7 +87,7 @@ function addTag() {
       </button>
       <button
         @click="emit('delete', tag.name)"
-        class="opacity-0 group-hover:opacity-100 p-1 rounded text-gray-400 hover:text-rd-danger transition-all shrink-0"
+        class="opacity-100 md:opacity-0 md:group-hover:opacity-100 focus:opacity-100 p-1 rounded text-gray-400 hover:text-rd-danger transition-all shrink-0"
         title="Delete tag"
       >
         <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">

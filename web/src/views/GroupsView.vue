@@ -1,16 +1,19 @@
 <script setup lang="ts">
 import { ref, onMounted } from 'vue'
+import ErrorNotice from '../components/ui/ErrorNotice.vue'
+import { useAsyncTask } from '../composables/useAsyncTask'
 import * as abApi from '../api/addressBook'
 
 const groups = ref<abApi.GroupItem[]>([])
 const showAdd = ref(false)
 const newGroup = ref({ name: '', note: '' })
-const error = ref('')
+const { pending, error, run } = useAsyncTask()
 
-async function loadGroups() {
+async function fetchGroups() {
   const res = await abApi.getGroups()
   groups.value = res.data
 }
+async function loadGroups() { await run(fetchGroups) }
 
 async function handleCreate() {
   error.value = ''
@@ -18,20 +21,17 @@ async function handleCreate() {
     error.value = 'Group name is required'
     return
   }
-  try {
+  await run(async () => {
     await abApi.createGroup(newGroup.value)
     newGroup.value = { name: '', note: '' }
     showAdd.value = false
-    await loadGroups()
-  } catch (e: any) {
-    error.value = e.message
-  }
+    await fetchGroups()
+  })
 }
 
 async function handleDelete(id: number, name: string) {
   if (confirm(`Delete group "${name}"?`)) {
-    await abApi.deleteGroup(id)
-    await loadGroups()
+    await run(async () => { await abApi.deleteGroup(id); await fetchGroups() })
   }
 }
 
@@ -42,7 +42,7 @@ onMounted(loadGroups)
   <div>
     <div class="flex items-center justify-between mb-6">
       <h1 class="text-lg font-semibold text-gray-900 dark:text-rd-text">Groups</h1>
-      <button
+      <button :disabled="pending"
         @click="showAdd = true"
         class="px-4 py-2 text-sm rounded-lg bg-rd-primary hover:bg-rd-primary-hover text-white font-medium transition-colors flex items-center gap-2"
       >
@@ -53,28 +53,30 @@ onMounted(loadGroups)
       </button>
     </div>
 
+    <ErrorNotice :message="error" retry @retry="loadGroups" />
+    <p v-if="pending" role="status" class="my-3 text-sm text-gray-500">Working…</p>
+
     <!-- Add group form -->
-    <div v-if="showAdd" class="bg-white dark:bg-rd-card border border-gray-200 dark:border-rd-border rounded-xl p-6 mb-6">
+    <form @submit.prevent="handleCreate" v-if="showAdd" class="bg-white dark:bg-rd-card border border-gray-200 dark:border-rd-border rounded-xl p-6 mb-6">
       <h2 class="text-sm font-semibold text-gray-900 dark:text-rd-text mb-4">New Group</h2>
-      <div v-if="error" class="mb-4 p-3 text-sm text-red-600 bg-red-50 dark:bg-red-900/20 dark:text-red-400 rounded-lg">{{ error }}</div>
-      <div class="grid grid-cols-2 gap-4">
+      <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
         <div>
-          <label class="block text-xs font-medium text-gray-600 dark:text-rd-text-secondary mb-1">Name *</label>
-          <input v-model="newGroup.name" class="w-full px-3 py-2 text-sm rounded-lg border border-gray-300 dark:border-rd-border bg-white dark:bg-rd-scaffold text-gray-900 dark:text-rd-text focus:outline-none focus:ring-2 focus:ring-rd-primary" />
+          <label for="newGroup-name" class="block text-xs font-medium text-gray-600 dark:text-rd-text-secondary mb-1">Name *</label>
+          <input id="newGroup-name" maxlength="128" v-model="newGroup.name" class="w-full px-3 py-2 text-sm rounded-lg border border-gray-300 dark:border-rd-border bg-white dark:bg-rd-scaffold text-gray-900 dark:text-rd-text focus:outline-none focus:ring-2 focus:ring-rd-primary" />
         </div>
         <div>
-          <label class="block text-xs font-medium text-gray-600 dark:text-rd-text-secondary mb-1">Note</label>
-          <input v-model="newGroup.note" class="w-full px-3 py-2 text-sm rounded-lg border border-gray-300 dark:border-rd-border bg-white dark:bg-rd-scaffold text-gray-900 dark:text-rd-text focus:outline-none focus:ring-2 focus:ring-rd-primary" />
+          <label for="newGroup-note" class="block text-xs font-medium text-gray-600 dark:text-rd-text-secondary mb-1">Note</label>
+          <input id="newGroup-note" v-model="newGroup.note" class="w-full px-3 py-2 text-sm rounded-lg border border-gray-300 dark:border-rd-border bg-white dark:bg-rd-scaffold text-gray-900 dark:text-rd-text focus:outline-none focus:ring-2 focus:ring-rd-primary" />
         </div>
       </div>
       <div class="flex justify-end gap-3 mt-4">
-        <button @click="showAdd = false" class="px-4 py-2 text-sm rounded-lg text-gray-600 dark:text-rd-text-secondary hover:bg-gray-100 dark:hover:bg-rd-card-hover">Cancel</button>
-        <button @click="handleCreate" class="px-4 py-2 text-sm rounded-lg bg-rd-primary hover:bg-rd-primary-hover text-white font-medium">Create</button>
+        <button :disabled="pending" type="button" @click="showAdd = false" class="px-4 py-2 text-sm rounded-lg text-gray-600 dark:text-rd-text-secondary hover:bg-gray-100 dark:hover:bg-rd-card-hover">Cancel</button>
+        <button :disabled="pending" type="submit" class="px-4 py-2 text-sm rounded-lg bg-rd-primary hover:bg-rd-primary-hover text-white font-medium">Create</button>
       </div>
-    </div>
+    </form>
 
     <!-- Groups table -->
-    <div class="bg-white dark:bg-rd-card border border-gray-200 dark:border-rd-border rounded-xl overflow-hidden">
+    <div class="bg-white dark:bg-rd-card border border-gray-200 dark:border-rd-border rounded-xl overflow-x-auto">
       <table class="w-full">
         <thead>
           <tr class="border-b border-gray-200 dark:border-rd-border">
@@ -94,8 +96,8 @@ onMounted(loadGroups)
             <td class="px-6 py-3 text-sm text-gray-600 dark:text-rd-text-secondary">{{ group.note || '-' }}</td>
             <td class="px-6 py-3 text-sm text-gray-600 dark:text-rd-text-secondary">{{ group.created_at }}</td>
             <td class="px-6 py-3 text-right">
-              <button
-                @click="handleDelete(group.id, group.name)"
+              <button :disabled="pending"
+                :aria-label="`Delete group ${group.name}`" @click="handleDelete(group.id, group.name)"
                 class="text-sm text-gray-400 hover:text-rd-danger transition-colors"
               >
                 <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -106,7 +108,7 @@ onMounted(loadGroups)
           </tr>
         </tbody>
       </table>
-      <div v-if="!groups.length" class="text-center py-10 text-sm text-gray-400 dark:text-rd-text-secondary">
+      <div v-if="!pending && !error && !groups.length" class="text-center py-10 text-sm text-gray-400 dark:text-rd-text-secondary">
         No groups found
       </div>
     </div>

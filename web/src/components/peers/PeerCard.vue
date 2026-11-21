@@ -36,7 +36,7 @@ function displayName(peer: Peer) {
 </script>
 
 <template>
-  <div class="group relative bg-white dark:bg-rd-card border border-gray-200 dark:border-rd-border rounded-xl overflow-hidden hover:shadow-md dark:hover:border-rd-text-secondary/30 transition-all cursor-pointer">
+  <div class="group relative bg-white dark:bg-rd-card border border-gray-200 dark:border-rd-border rounded-xl overflow-hidden hover:shadow-md dark:hover:border-rd-text-secondary/30 transition-all">
     <!-- Platform color strip -->
     <div class="h-1" :class="getPlatformColor(peer.platform)" />
 
@@ -56,7 +56,7 @@ function displayName(peer: Peer) {
         <!-- Delete button -->
         <button
           @click.stop="emit('delete', peer.id)"
-          class="opacity-0 group-hover:opacity-100 p-1 rounded text-gray-400 hover:text-rd-danger transition-all"
+          class="opacity-100 md:opacity-0 md:group-hover:opacity-100 focus:opacity-100 p-1 rounded text-gray-400 hover:text-rd-danger transition-all"
           title="Remove peer"
         >
           <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">

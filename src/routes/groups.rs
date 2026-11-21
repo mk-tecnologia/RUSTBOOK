@@ -54,6 +54,7 @@ async fn create_group(
 ) -> Result<Json<Value>, ApiError> {
     require_admin(&claims)?;
 
+    validate_name(&req.name)?;
     sqlx::query("INSERT INTO groups (name, note) VALUES (?, ?)")
         .bind(&req.name)
         .bind(&req.note)
@@ -73,23 +74,23 @@ async fn update_group(
     State(state): State<AppState>,
     AuthUser(claims): AuthUser,
     Path(id): Path<i64>,
-    Json(req): Json<Value>,
+    Json(req): Json<UpdateGroupRequest>,
 ) -> Result<Json<Value>, ApiError> {
     require_admin(&claims)?;
 
-    if let Some(name) = req.get("name").and_then(|v| v.as_str()) {
-        sqlx::query("UPDATE groups SET name = ? WHERE id = ?")
-            .bind(name)
-            .bind(id)
-            .execute(&state.db)
-            .await?;
+    if let Some(name) = &req.name {
+        validate_name(name)?;
     }
-    if let Some(note) = req.get("note").and_then(|v| v.as_str()) {
-        sqlx::query("UPDATE groups SET note = ? WHERE id = ?")
-            .bind(note)
-            .bind(id)
-            .execute(&state.db)
-            .await?;
+    let result = sqlx::query(
+        "UPDATE groups SET name = COALESCE(?, name), note = COALESCE(?, note) WHERE id = ?",
+    )
+    .bind(req.name)
+    .bind(req.note)
+    .bind(id)
+    .execute(&state.db)
+    .await?;
+    if result.rows_affected() == 0 {
+        return Err(ApiError::NotFound("Group not found".into()));
     }
 
     Ok(Json(json!({})))
@@ -108,4 +109,13 @@ async fn delete_group(
         .await?;
 
     Ok(Json(json!({})))
+}
+
+fn validate_name(name: &str) -> Result<(), ApiError> {
+    if name.trim().is_empty() || name.len() > 128 {
+        return Err(ApiError::BadRequest(
+            "Group name must contain 1–128 bytes".into(),
+        ));
+    }
+    Ok(())
 }

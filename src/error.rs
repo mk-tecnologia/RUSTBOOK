@@ -4,6 +4,7 @@ use serde_json::json;
 
 #[derive(Debug)]
 pub enum ApiError {
+    TooManyRequests,
     BadRequest(String),
     Unauthorized(String),
     Forbidden(String),
@@ -15,6 +16,7 @@ pub enum ApiError {
 impl std::fmt::Display for ApiError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
+            ApiError::TooManyRequests => write!(f, "Too many requests"),
             ApiError::BadRequest(msg) => write!(f, "Bad request: {}", msg),
             ApiError::Unauthorized(msg) => write!(f, "Unauthorized: {}", msg),
             ApiError::Forbidden(msg) => write!(f, "Forbidden: {}", msg),
@@ -28,6 +30,10 @@ impl std::fmt::Display for ApiError {
 impl IntoResponse for ApiError {
     fn into_response(self) -> Response {
         let (status, error_message) = match &self {
+            ApiError::TooManyRequests => (
+                StatusCode::TOO_MANY_REQUESTS,
+                "Too many requests; retry later".into(),
+            ),
             ApiError::BadRequest(msg) => (StatusCode::BAD_REQUEST, msg.clone()),
             ApiError::Unauthorized(msg) => (StatusCode::UNAUTHORIZED, msg.clone()),
             ApiError::Forbidden(msg) => (StatusCode::FORBIDDEN, msg.clone()),
@@ -35,7 +41,10 @@ impl IntoResponse for ApiError {
             ApiError::Conflict(msg) => (StatusCode::CONFLICT, msg.clone()),
             ApiError::Internal(msg) => {
                 tracing::error!("Internal server error: {}", msg);
-                (StatusCode::INTERNAL_SERVER_ERROR, "Internal server error".to_string())
+                (
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    "Internal server error".to_string(),
+                )
             }
         };
 
@@ -46,6 +55,11 @@ impl IntoResponse for ApiError {
 
 impl From<sqlx::Error> for ApiError {
     fn from(err: sqlx::Error) -> Self {
+        if let sqlx::Error::Database(ref db) = err {
+            if db.is_unique_violation() {
+                return ApiError::Conflict("A record with this identifier already exists".into());
+            }
+        }
         ApiError::Internal(err.to_string())
     }
 }

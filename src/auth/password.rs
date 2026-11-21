@@ -19,3 +19,29 @@ pub fn verify_password(password: &str, hash: &str) -> bool {
         .verify_password(password.as_bytes(), &parsed_hash)
         .is_ok()
 }
+
+static PASSWORD_WORKERS: tokio::sync::Semaphore = tokio::sync::Semaphore::const_new(4);
+
+pub async fn hash_async(password: String) -> Result<String, crate::error::ApiError> {
+    let permit = PASSWORD_WORKERS
+        .try_acquire()
+        .map_err(|_| crate::error::ApiError::TooManyRequests)?;
+    tokio::task::spawn_blocking(move || {
+        let _permit = permit;
+        hash_password(&password).map_err(|e| crate::error::ApiError::Internal(e.to_string()))
+    })
+    .await
+    .map_err(|e| crate::error::ApiError::Internal(e.to_string()))?
+}
+
+pub async fn verify_async(password: String, hash: String) -> Result<bool, crate::error::ApiError> {
+    let permit = PASSWORD_WORKERS
+        .try_acquire()
+        .map_err(|_| crate::error::ApiError::TooManyRequests)?;
+    tokio::task::spawn_blocking(move || {
+        let _permit = permit;
+        verify_password(&password, &hash)
+    })
+    .await
+    .map_err(|e| crate::error::ApiError::Internal(e.to_string()))
+}

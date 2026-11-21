@@ -1,9 +1,13 @@
-use axum::{extract::State, routing::{get, post}, Json, Router};
+use axum::{
+    extract::State,
+    routing::{get, post},
+    Json, Router,
+};
 use serde_json::{json, Value};
 
-use crate::auth::jwt::create_token;
+use crate::auth::jwt::{create_token, validate_token};
 use crate::auth::middleware::AuthUser;
-use crate::auth::password::verify_password;
+use crate::auth::password::verify_async;
 use crate::error::ApiError;
 use crate::models::user::{LoginRequest, LoginResponse, UserPayload};
 use crate::state::AppState;
@@ -19,6 +23,10 @@ async fn login(
     State(state): State<AppState>,
     Json(req): Json<LoginRequest>,
 ) -> Result<Json<LoginResponse>, ApiError> {
+    if req.username.is_empty() || req.username.len() > 128 || req.password.len() > 1024 {
+        return Err(ApiError::BadRequest("Invalid credentials format".into()));
+    }
+    crate::auth::throttle::check(&req.username)?;
     let user = sqlx::query_as::<_, crate::models::user::User>(
         "SELECT * FROM users WHERE username = ? AND status = 1",
     )
@@ -27,8 +35,10 @@ async fn login(
     .await?
     .ok_or_else(|| ApiError::Unauthorized("Invalid username or password".to_string()))?;
 
-    if !verify_password(&req.password, &user.password_hash) {
-        return Err(ApiError::Unauthorized("Invalid username or password".to_string()));
+    if !verify_async(req.password, user.password_hash.clone()).await? {
+        return Err(ApiError::Unauthorized(
+            "Invalid username or password".to_string(),
+        ));
     }
 
     let token = create_token(
@@ -39,15 +49,22 @@ async fn login(
         state.config.token_expiry_hours,
     )?;
 
-    // Log the login in audit
-    let ip = req.id.clone();
-    sqlx::query("INSERT INTO audit_log (user_id, action, rustdesk_id, ip) VALUES (?, 'login', ?, ?)")
+    let claims = validate_token(&token, &state.config.jwt_secret)?;
+    let mut tx = state.db.begin().await?;
+    sqlx::query("DELETE FROM sessions WHERE expires_at <= unixepoch()")
+        .execute(&mut *tx)
+        .await?;
+    sqlx::query("INSERT INTO sessions (id, user_id, expires_at) SELECT ?, id, ? FROM users WHERE id = ? AND status = 1 AND password_hash = ?")
+        .bind(&claims.jti).bind(claims.exp as i64).bind(user.id).bind(&user.password_hash)
+        .execute(&mut *tx).await?
+        .rows_affected().eq(&1).then_some(())
+        .ok_or_else(|| ApiError::Unauthorized("Credentials changed; sign in again".into()))?;
+    sqlx::query("INSERT INTO audit_log (user_id, action, rustdesk_id) VALUES (?, 'login', ?)")
         .bind(user.id)
         .bind(&req.id)
-        .bind(&ip)
-        .execute(&state.db)
-        .await
-        .ok();
+        .execute(&mut *tx)
+        .await?;
+    tx.commit().await?;
 
     Ok(Json(LoginResponse {
         access_token: token,
@@ -65,21 +82,26 @@ async fn login(
     }))
 }
 
-async fn logout(AuthUser(_claims): AuthUser) -> Json<Value> {
-    Json(json!({}))
+async fn logout(
+    State(state): State<AppState>,
+    AuthUser(claims): AuthUser,
+) -> Result<Json<Value>, ApiError> {
+    sqlx::query("DELETE FROM sessions WHERE id = ?")
+        .bind(&claims.jti)
+        .execute(&state.db)
+        .await?;
+    Ok(Json(json!({})))
 }
 
 async fn current_user(
     State(state): State<AppState>,
     AuthUser(claims): AuthUser,
 ) -> Result<Json<Value>, ApiError> {
-    let user = sqlx::query_as::<_, crate::models::user::User>(
-        "SELECT * FROM users WHERE id = ?",
-    )
-    .bind(claims.user_id)
-    .fetch_optional(&state.db)
-    .await?
-    .ok_or_else(|| ApiError::NotFound("User not found".to_string()))?;
+    let user = sqlx::query_as::<_, crate::models::user::User>("SELECT * FROM users WHERE id = ?")
+        .bind(claims.user_id)
+        .fetch_optional(&state.db)
+        .await?
+        .ok_or_else(|| ApiError::NotFound("User not found".to_string()))?;
 
     Ok(Json(json!({
         "name": if user.name.is_empty() { user.username } else { user.name },

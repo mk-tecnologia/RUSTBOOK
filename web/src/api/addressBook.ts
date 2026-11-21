@@ -38,8 +38,9 @@ export function getPersonalAb(): Promise<{ data: AbProfile }> {
   return api('/api/ab/personal')
 }
 
-export function getPeers(guid: string, page = 1, pageSize = 100): Promise<PeersResponse> {
-  return api(`/api/ab/peers?ab=${guid}&current=${page}&pageSize=${pageSize}`)
+export function getPeers(guid: string, page = 1, pageSize = 100, q = '', tag = '', signal?: AbortSignal): Promise<PeersResponse> {
+  const params = new URLSearchParams({ ab: guid, current: String(page), pageSize: String(pageSize), q, tag })
+  return api(`/api/ab/peers?${params}`, { signal })
 }
 
 export function addPeer(guid: string, peer: Partial<Peer>): Promise<void> {
@@ -114,7 +115,7 @@ export function createUser(user: { username: string; password: string; name?: st
   return api('/api/users', { method: 'POST', body: JSON.stringify(user) })
 }
 
-export function updateUser(id: number, data: Record<string, any>): Promise<void> {
+export function updateUser(id: number, data: Record<string, unknown>): Promise<void> {
   return api(`/api/users/${id}`, { method: 'PUT', body: JSON.stringify(data) })
 }
 
@@ -130,7 +131,7 @@ export function createGroup(group: { name: string; note?: string }): Promise<voi
   return api('/api/groups', { method: 'POST', body: JSON.stringify(group) })
 }
 
-export function updateGroup(id: number, data: Record<string, any>): Promise<void> {
+export function updateGroup(id: number, data: Record<string, unknown>): Promise<void> {
   return api(`/api/groups/${id}`, { method: 'PUT', body: JSON.stringify(data) })
 }
 

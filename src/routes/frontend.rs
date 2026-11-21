@@ -9,6 +9,13 @@ use rust_embed::Embed;
 struct FrontendAssets;
 
 pub async fn serve_frontend(uri: axum::http::Uri) -> Response {
+    if uri.path() == "/api" || uri.path().starts_with("/api/") {
+        return (
+            StatusCode::NOT_FOUND,
+            axum::Json(serde_json::json!({"error": "API route not found"})),
+        )
+            .into_response();
+    }
     let path = uri.path().trim_start_matches('/');
 
     // Try to serve the exact file

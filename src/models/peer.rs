@@ -43,7 +43,7 @@ pub struct AddPeerRequest {
     #[serde(default)]
     pub alias: String,
     #[serde(default)]
-    pub tags: Vec<String>,
+    pub tags: Option<Vec<String>>,
     #[serde(default)]
     pub note: String,
 }
@@ -51,6 +51,7 @@ pub struct AddPeerRequest {
 /// Request to update a peer.
 #[derive(Debug, Deserialize)]
 pub struct UpdatePeerRequest {
+    pub id: String,
     #[serde(default)]
     pub hash: Option<String>,
     #[serde(default)]

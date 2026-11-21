@@ -1,34 +1,40 @@
 <script setup lang="ts">
 import { ref, onMounted } from 'vue'
+import ErrorNotice from '../components/ui/ErrorNotice.vue'
+import { useAsyncTask } from '../composables/useAsyncTask'
+import { useAuthStore } from '../stores/auth'
 import { api } from '../api/client'
 import { useAddressBookStore } from '../stores/addressBook'
 
 const abStore = useAddressBookStore()
+const auth = useAuthStore()
+const { pending, error, run } = useAsyncTask()
 
 const stats = ref({
   totalPeers: 0,
   totalTags: 0,
   totalUsers: 0,
-  recentAudit: [] as any[],
 })
 
-onMounted(async () => {
-  await abStore.init()
-  stats.value.totalPeers = abStore.totalPeers
-  stats.value.totalTags = abStore.tags.length
-
-  try {
-    const users = await api('/api/users')
-    stats.value.totalUsers = users.total || 0
-  } catch {
-    // not admin, ignore
-  }
-})
+async function load() {
+  await run(async () => {
+    abStore.reset()
+    await abStore.init()
+    if (abStore.error) throw new Error(abStore.error)
+    stats.value.totalPeers = abStore.totalPeers
+    stats.value.totalTags = abStore.tags.length
+    if (auth.isAdmin) {
+      const users = await api<{ total: number }>('/api/users')
+      stats.value.totalUsers = users.total
+    }
+  })
+}
+onMounted(load)
 
 const statCards = [
-  { label: 'Peers', key: 'totalPeers', icon: 'monitor', color: 'bg-blue-500' },
-  { label: 'Tags', key: 'totalTags', icon: 'tag', color: 'bg-green-500' },
-  { label: 'Users', key: 'totalUsers', icon: 'users', color: 'bg-purple-500' },
+  { label: 'Peers', key: 'totalPeers', icon: 'monitor', color: 'bg-blue-500/10' },
+  { label: 'Tags', key: 'totalTags', icon: 'tag', color: 'bg-green-500/10' },
+  { label: 'Users', key: 'totalUsers', icon: 'users', color: 'bg-purple-500/10' },
 ]
 </script>
 
@@ -36,6 +42,8 @@ const statCards = [
   <div>
     <h1 class="text-lg font-semibold text-gray-900 dark:text-rd-text mb-6">Dashboard</h1>
 
+    <ErrorNotice :message="error" retry @retry="load" />
+    <p v-if="pending" role="status" class="text-sm text-gray-500 mb-4">Loading dashboard…</p>
     <!-- Stats grid -->
     <div class="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-8">
       <div
@@ -50,7 +58,7 @@ const statCards = [
               {{ stats[card.key as keyof typeof stats] }}
             </p>
           </div>
-          <div class="w-10 h-10 rounded-lg flex items-center justify-center" :class="card.color + '/10'">
+          <div class="w-10 h-10 rounded-lg flex items-center justify-center" :class="card.color">
             <svg v-if="card.icon === 'monitor'" class="w-5 h-5 text-blue-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9.75 17L9 20l-1 1h8l-1-1-.75-3M3 13h18M5 17h14a2 2 0 002-2V5a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
             </svg>

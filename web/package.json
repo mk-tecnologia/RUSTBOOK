@@ -1,15 +1,16 @@
 {
   "name": "web",
   "private": true,
-  "version": "0.0.0",
+  "version": "0.2.0",
   "type": "module",
   "scripts": {
     "dev": "vite",
     "build": "vue-tsc -b && vite build",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "test": "node --experimental-strip-types --test tests/*.test.ts"
   },
   "dependencies": {
-    "vue": "^3.5.25"
+    "vue": "^3.5.46"
   },
   "devDependencies": {
     "@tailwindcss/vite": "^4.2.0",
@@ -19,7 +20,7 @@
     "pinia": "^3.0.4",
     "tailwindcss": "^4.2.0",
     "typescript": "~5.9.3",
-    "vite": "^7.3.1",
+    "vite": "^7.3.8",
     "vue-router": "^4.6.4",
     "vue-tsc": "^3.1.5"
   }

@@ -1,77 +1,60 @@
+use crate::{
+    access::{resolve_book, Access},
+    auth::middleware::AuthUser,
+    error::ApiError,
+    models::peer::*,
+    pagination::Pagination,
+    state::AppState,
+};
 use axum::{
     extract::{Path, Query, State},
     routing::{delete, get, post, put},
     Json, Router,
 };
 use serde::Deserialize;
-use serde_json::{json, Value};
-
-use crate::auth::middleware::AuthUser;
-use crate::error::ApiError;
-use crate::models::peer::*;
-use crate::state::AppState;
+use std::collections::HashMap;
 
 pub fn routes() -> Router<AppState> {
     Router::new()
-        .route("/api/ab/peers", get(get_peers))
+        .route("/api/ab/peers", get(get_peers).post(get_peers))
         .route("/api/ab/peer/add/{guid}", post(add_peer))
         .route("/api/ab/peer/update/{guid}", put(update_peer))
         .route("/api/ab/peer/{guid}", delete(delete_peers))
 }
 
 #[derive(Debug, Deserialize)]
-#[allow(non_snake_case)]
-pub struct PeersQuery {
+struct PeersQuery {
+    #[serde(default = "crate::pagination::default_page")]
+    current: i64,
+    #[serde(default = "crate::pagination::default_size", rename = "pageSize")]
+    page_size: i64,
     #[serde(default)]
-    pub current: i64,
-    #[serde(default = "default_page_size")]
-    pub pageSize: i64,
+    ab: String,
     #[serde(default)]
-    pub ab: String,
+    q: String,
+    #[serde(default)]
+    tag: String,
 }
 
-fn default_page_size() -> i64 {
-    100
-}
-
-/// Verify the user has access to the given address book guid.
-/// Returns the guid of the personal AB if `ab` is empty.
-pub async fn resolve_ab_guid(
+pub async fn peer_tags(
     db: &sqlx::SqlitePool,
-    user_id: i64,
-    ab_guid: &str,
-) -> Result<String, ApiError> {
-    if ab_guid.is_empty() {
-        // Use personal AB
-        let guid: Option<String> = sqlx::query_scalar(
-            "SELECT guid FROM address_books WHERE owner_id = ? AND is_personal = TRUE",
-        )
-        .bind(user_id)
-        .fetch_optional(db)
-        .await?;
-        return guid.ok_or_else(|| ApiError::NotFound("No personal address book found".to_string()));
+    peers: &[Peer],
+) -> Result<HashMap<i64, Vec<String>>, ApiError> {
+    let mut tags: HashMap<i64, Vec<String>> = HashMap::new();
+    for chunk in peers.chunks(500) {
+        let mut query = sqlx::QueryBuilder::<sqlx::Sqlite>::new(
+            "SELECT pt.peer_id, t.name FROM peer_tags pt JOIN tags t ON t.id = pt.tag_id WHERE pt.peer_id IN (");
+        let mut ids = query.separated(", ");
+        for peer in chunk {
+            ids.push_bind(peer.id);
+        }
+        ids.push_unseparated(") ORDER BY t.name");
+        let rows: Vec<(i64, String)> = query.build_query_as().fetch_all(db).await?;
+        for (id, name) in rows {
+            tags.entry(id).or_default().push(name);
+        }
     }
-
-    // Check ownership or share access
-    let has_access: bool = sqlx::query_scalar(
-        "SELECT COUNT(*) > 0 FROM address_books ab
-         WHERE ab.guid = ? AND (
-             ab.owner_id = ?
-             OR EXISTS (SELECT 1 FROM ab_shares s WHERE s.ab_guid = ab.guid AND (s.user_id = ? OR s.group_id IN (SELECT group_id FROM user_groups WHERE user_id = ?)))
-         )",
-    )
-    .bind(ab_guid)
-    .bind(user_id)
-    .bind(user_id)
-    .bind(user_id)
-    .fetch_one(db)
-    .await?;
-
-    if !has_access {
-        return Err(ApiError::Forbidden("Access denied to this address book".to_string()));
-    }
-
-    Ok(ab_guid.to_string())
+    Ok(tags)
 }
 
 async fn get_peers(
@@ -79,55 +62,100 @@ async fn get_peers(
     AuthUser(claims): AuthUser,
     Query(query): Query<PeersQuery>,
 ) -> Result<Json<PeersResponse>, ApiError> {
-    let guid = resolve_ab_guid(&state.db, claims.user_id, &query.ab).await?;
-
-    let offset = if query.current > 0 {
-        (query.current - 1) * query.pageSize
-    } else {
-        0
-    };
-
-    let peers = sqlx::query_as::<_, Peer>(
-        "SELECT * FROM peers WHERE ab_guid = ? ORDER BY rustdesk_id LIMIT ? OFFSET ?",
-    )
-    .bind(&guid)
-    .bind(query.pageSize)
-    .bind(offset)
-    .fetch_all(&state.db)
-    .await?;
-
-    let total: i64 =
-        sqlx::query_scalar("SELECT COUNT(*) FROM peers WHERE ab_guid = ?")
-            .bind(&guid)
-            .fetch_one(&state.db)
-            .await?;
-
-    let mut payloads = Vec::new();
-    for peer in &peers {
-        let tags: Vec<String> = sqlx::query_scalar(
-            "SELECT t.name FROM tags t JOIN peer_tags pt ON t.id = pt.tag_id WHERE pt.peer_id = ?",
-        )
-        .bind(peer.id)
-        .fetch_all(&state.db)
-        .await
-        .unwrap_or_default();
-
-        payloads.push(PeerPayload {
-            id: peer.rustdesk_id.clone(),
-            hash: peer.hash.clone(),
-            username: peer.username.clone(),
-            hostname: peer.hostname.clone(),
-            platform: peer.platform.clone(),
-            alias: peer.alias.clone(),
-            tags,
-            note: peer.note.clone(),
-        });
+    let offset = Pagination {
+        current: query.current,
+        page_size: query.page_size,
     }
-
+    .offset()?;
+    if query.q.len() > 128 || query.tag.len() > 128 {
+        return Err(ApiError::BadRequest("Filter is too long".into()));
+    }
+    let guid = resolve_book(&state.db, claims.user_id, &query.ab, Access::Read).await?;
+    let filter = " FROM peers p WHERE ab_guid = ?
+        AND (? = '' OR instr(lower(rustdesk_id || ' ' || alias || ' ' || hostname || ' ' || username), lower(?)) > 0)
+        AND (? = '' OR EXISTS(SELECT 1 FROM peer_tags pt JOIN tags t ON t.id = pt.tag_id WHERE pt.peer_id = p.id AND t.name = ?))";
+    let mut rows_query = sqlx::QueryBuilder::<sqlx::Sqlite>::new("SELECT p.*");
+    rows_query
+        .push(filter)
+        .push(" ORDER BY rustdesk_id LIMIT ? OFFSET ?");
+    let peers = rows_query
+        .build_query_as::<Peer>()
+        .bind(&guid)
+        .bind(query.q.trim())
+        .bind(query.q.trim())
+        .bind(&query.tag)
+        .bind(&query.tag)
+        .bind(query.page_size)
+        .bind(offset)
+        .fetch_all(&state.db)
+        .await?;
+    let mut count_query = sqlx::QueryBuilder::<sqlx::Sqlite>::new("SELECT COUNT(*)");
+    count_query.push(filter);
+    let total: i64 = count_query
+        .build_query_scalar()
+        .bind(&guid)
+        .bind(query.q.trim())
+        .bind(query.q.trim())
+        .bind(&query.tag)
+        .bind(&query.tag)
+        .fetch_one(&state.db)
+        .await?;
+    let mut tags = peer_tags(&state.db, &peers).await?;
     Ok(Json(PeersResponse {
-        data: payloads,
+        data: peers
+            .into_iter()
+            .map(|peer| PeerPayload {
+                tags: tags.remove(&peer.id).unwrap_or_default(),
+                id: peer.rustdesk_id,
+                hash: peer.hash,
+                username: peer.username,
+                hostname: peer.hostname,
+                platform: peer.platform,
+                alias: peer.alias,
+                note: peer.note,
+            })
+            .collect(),
         total,
     }))
+}
+
+fn validate_id(id: &str) -> Result<(), ApiError> {
+    if id.trim().is_empty() || id.len() > 128 {
+        return Err(ApiError::BadRequest(
+            "A peer ID of 1–128 bytes is required".into(),
+        ));
+    }
+    Ok(())
+}
+
+async fn replace_tags(
+    tx: &mut sqlx::SqliteConnection,
+    guid: &str,
+    peer_id: i64,
+    tags: &[String],
+) -> Result<(), ApiError> {
+    if tags.len() > 100 {
+        return Err(ApiError::BadRequest("At most 100 tags per peer".into()));
+    }
+    sqlx::query("DELETE FROM peer_tags WHERE peer_id = ?")
+        .bind(peer_id)
+        .execute(&mut *tx)
+        .await?;
+    for name in tags {
+        let tag: Option<i64> =
+            sqlx::query_scalar("SELECT id FROM tags WHERE ab_guid = ? AND name = ?")
+                .bind(guid)
+                .bind(name)
+                .fetch_optional(&mut *tx)
+                .await?;
+        let tag = tag.ok_or_else(|| ApiError::BadRequest(format!("Unknown tag: {name}")))?;
+        sqlx::query("INSERT OR IGNORE INTO peer_tags (peer_id, tag_id) VALUES (?, ?)")
+            .bind(peer_id)
+            .bind(tag)
+            .execute(&mut *tx)
+            .await?;
+    }
+    Ok(())
 }
 
 async fn add_peer(
@@ -135,113 +163,110 @@ async fn add_peer(
     AuthUser(claims): AuthUser,
     Path(guid): Path<String>,
     Json(req): Json<AddPeerRequest>,
-) -> Result<Json<Value>, ApiError> {
-    let guid = resolve_ab_guid(&state.db, claims.user_id, &guid).await?;
-
-    sqlx::query(
+) -> Result<StatusOk, ApiError> {
+    validate_id(&req.id)?;
+    let guid = resolve_book(&state.db, claims.user_id, &guid, Access::Write).await?;
+    let mut tx = state.db.begin().await?;
+    let peer_id: i64 = sqlx::query_scalar(
         "INSERT INTO peers (ab_guid, rustdesk_id, hash, username, hostname, platform, alias, note)
          VALUES (?, ?, ?, ?, ?, ?, ?, ?)
          ON CONFLICT(ab_guid, rustdesk_id) DO UPDATE SET
-             hash = excluded.hash,
-             username = excluded.username,
-             hostname = excluded.hostname,
-             platform = excluded.platform,
-             alias = excluded.alias,
-             note = excluded.note,
-             updated_at = CURRENT_TIMESTAMP",
+         hash = excluded.hash, username = excluded.username, hostname = excluded.hostname,
+         platform = excluded.platform, alias = excluded.alias, note = excluded.note,
+         updated_at = CURRENT_TIMESTAMP RETURNING id",
     )
     .bind(&guid)
     .bind(&req.id)
-    .bind(&req.hash)
-    .bind(&req.username)
-    .bind(&req.hostname)
-    .bind(&req.platform)
-    .bind(&req.alias)
-    .bind(&req.note)
-    .execute(&state.db)
+    .bind(req.hash)
+    .bind(req.username)
+    .bind(req.hostname)
+    .bind(req.platform)
+    .bind(req.alias)
+    .bind(req.note)
+    .fetch_one(&mut *tx)
     .await?;
-
-    // Update tags if provided
-    if !req.tags.is_empty() {
-        // Get the actual peer id (might differ if it was an update)
-        let actual_peer_id: i64 = sqlx::query_scalar(
-            "SELECT id FROM peers WHERE ab_guid = ? AND rustdesk_id = ?",
-        )
-        .bind(&guid)
-        .bind(&req.id)
-        .fetch_one(&state.db)
-        .await?;
-
-        sqlx::query("DELETE FROM peer_tags WHERE peer_id = ?")
-            .bind(actual_peer_id)
-            .execute(&state.db)
-            .await?;
-
-        for tag_name in &req.tags {
-            let tag_id: Option<i64> = sqlx::query_scalar(
-                "SELECT id FROM tags WHERE ab_guid = ? AND name = ?",
-            )
-            .bind(&guid)
-            .bind(tag_name)
-            .fetch_optional(&state.db)
-            .await?;
-
-            if let Some(tag_id) = tag_id {
-                sqlx::query("INSERT OR IGNORE INTO peer_tags (peer_id, tag_id) VALUES (?, ?)")
-                    .bind(actual_peer_id)
-                    .bind(tag_id)
-                    .execute(&state.db)
-                    .await?;
-            }
-        }
+    if let Some(tags) = req.tags {
+        replace_tags(&mut tx, &guid, peer_id, &tags).await?;
     }
+    tx.commit().await?;
+    Ok(StatusOk)
+}
 
-    Ok(Json(json!({})))
+// Empty 200 responses match the RustDesk client's action response parser.
+pub struct StatusOk;
+impl axum::response::IntoResponse for StatusOk {
+    fn into_response(self) -> axum::response::Response {
+        axum::http::StatusCode::OK.into_response()
+    }
 }
 
 async fn update_peer(
     State(state): State<AppState>,
     AuthUser(claims): AuthUser,
     Path(guid): Path<String>,
-    Json(_req): Json<UpdatePeerRequest>,
-) -> Result<Json<Value>, ApiError> {
-    let _guid = resolve_ab_guid(&state.db, claims.user_id, &guid).await?;
+    Json(req): Json<UpdatePeerRequest>,
+) -> Result<StatusOk, ApiError> {
+    validate_id(&req.id)?;
+    let guid = resolve_book(&state.db, claims.user_id, &guid, Access::Write).await?;
+    let mut tx = state.db.begin().await?;
+    let peer_id: Option<i64> = sqlx::query_scalar(
+        "UPDATE peers SET hash = COALESCE(?, hash), username = COALESCE(?, username),
+         hostname = COALESCE(?, hostname), platform = COALESCE(?, platform), alias = COALESCE(?, alias),
+         note = COALESCE(?, note), updated_at = CURRENT_TIMESTAMP
+         WHERE ab_guid = ? AND rustdesk_id = ? RETURNING id")
+        .bind(req.hash).bind(req.username).bind(req.hostname).bind(req.platform).bind(req.alias).bind(req.note)
+        .bind(&guid).bind(req.id).fetch_optional(&mut *tx).await?;
+    let peer_id = peer_id.ok_or_else(|| ApiError::NotFound("Peer not found".into()))?;
+    if let Some(tags) = req.tags {
+        replace_tags(&mut tx, &guid, peer_id, &tags).await?;
+    }
+    tx.commit().await?;
+    Ok(StatusOk)
+}
 
-    // The client typically uses add_peer with upsert semantics for updates.
-    // This endpoint exists for compatibility.
-
-    Ok(Json(json!({})))
+#[derive(Deserialize)]
+#[serde(untagged)]
+pub enum DeleteRequest {
+    List(Vec<String>),
+    Object {
+        #[serde(default)]
+        ids: Vec<String>,
+        #[serde(default)]
+        id: Option<String>,
+    },
+}
+impl DeleteRequest {
+    pub fn ids(self) -> Result<Vec<String>, ApiError> {
+        let ids = match self {
+            Self::List(ids) => ids,
+            Self::Object { mut ids, id } => {
+                ids.extend(id);
+                ids
+            }
+        };
+        if ids.is_empty() || ids.len() > 100 {
+            return Err(ApiError::BadRequest("Provide 1–100 identifiers".into()));
+        }
+        Ok(ids)
+    }
 }
 
 async fn delete_peers(
     State(state): State<AppState>,
     AuthUser(claims): AuthUser,
     Path(guid): Path<String>,
-    Json(req): Json<DeletePeersRequest>,
-) -> Result<Json<Value>, ApiError> {
-    let guid = resolve_ab_guid(&state.db, claims.user_id, &guid).await?;
-
-    let mut ids_to_delete = req.ids;
-    if let Some(id) = req.id {
-        ids_to_delete.push(id);
-    }
-
-    for rustdesk_id in &ids_to_delete {
-        // Delete peer_tags first
-        sqlx::query(
-            "DELETE FROM peer_tags WHERE peer_id IN (SELECT id FROM peers WHERE ab_guid = ? AND rustdesk_id = ?)",
-        )
-        .bind(&guid)
-        .bind(rustdesk_id)
-        .execute(&state.db)
-        .await?;
-
+    Json(req): Json<DeleteRequest>,
+) -> Result<StatusOk, ApiError> {
+    let guid = resolve_book(&state.db, claims.user_id, &guid, Access::Write).await?;
+    let ids = req.ids()?;
+    let mut tx = state.db.begin().await?;
+    for id in ids {
         sqlx::query("DELETE FROM peers WHERE ab_guid = ? AND rustdesk_id = ?")
             .bind(&guid)
-            .bind(rustdesk_id)
-            .execute(&state.db)
+            .bind(id)
+            .execute(&mut *tx)
             .await?;
     }
-
-    Ok(Json(json!({})))
+    tx.commit().await?;
+    Ok(StatusOk)
 }

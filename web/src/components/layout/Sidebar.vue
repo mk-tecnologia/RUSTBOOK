@@ -28,7 +28,7 @@ function isActive(path: string) {
 </script>
 
 <template>
-  <aside class="w-56 shrink-0 border-r border-gray-200 dark:border-rd-border bg-white dark:bg-rd-card h-full flex flex-col">
+  <aside class="w-full md:w-60 shrink-0 border-r border-gray-200 dark:border-rd-border bg-white dark:bg-rd-card h-full flex flex-col">
     <!-- Logo -->
     <div class="h-14 flex items-center px-4 border-b border-gray-200 dark:border-rd-border">
       <div class="w-8 h-8 rounded-lg bg-rd-primary flex items-center justify-center mr-3">
@@ -40,7 +40,7 @@ function isActive(path: string) {
     </div>
 
     <!-- Navigation -->
-    <nav class="flex-1 p-3 space-y-1">
+    <nav aria-label="Main navigation" class="flex-1 p-3 space-y-1">
       <router-link
         v-for="item in navItems"
         :key="item.path"

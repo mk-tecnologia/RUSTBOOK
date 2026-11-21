@@ -47,8 +47,14 @@ const router = createRouter({
   ],
 })
 
-router.beforeEach((to) => {
+router.beforeEach(async (to) => {
   const auth = useAuthStore()
+  if (auth.isAuthenticated) {
+    try { await auth.refresh() } catch { auth.clearSession() }
+  }
+  if (to.meta.admin && auth.isAuthenticated && !auth.isAdmin) {
+    return { name: 'dashboard' }
+  }
   if (!to.meta.public && !auth.isAuthenticated) {
     return { name: 'login' }
   }

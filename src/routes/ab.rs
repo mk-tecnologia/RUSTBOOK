@@ -10,9 +10,18 @@ use crate::state::AppState;
 pub fn routes() -> Router<AppState> {
     Router::new()
         .route("/api/ab", get(get_ab_legacy).post(update_ab_legacy))
-        .route("/api/ab/personal", get(get_personal))
-        .route("/api/ab/shared/profiles", get(get_shared_profiles))
-        .route("/api/ab/settings", get(get_ab_settings))
+        .route(
+            "/api/ab/personal",
+            get(get_personal).post(get_personal_client),
+        )
+        .route(
+            "/api/ab/shared/profiles",
+            get(get_shared_profiles).post(get_shared_profiles),
+        )
+        .route(
+            "/api/ab/settings",
+            get(get_ab_settings).post(get_ab_settings),
+        )
 }
 
 /// Ensure the user has a personal address book, creating one if needed.
@@ -22,25 +31,15 @@ async fn ensure_personal_ab(
     user_id: i64,
     username: &str,
 ) -> Result<String, ApiError> {
-    let existing = sqlx::query_scalar::<_, String>(
+    sqlx::query("INSERT INTO address_books (guid, name, owner_id, is_personal) VALUES (?, 'Personal', ?, TRUE) ON CONFLICT DO NOTHING")
+        .bind(Uuid::new_v4().to_string()).bind(user_id).execute(db).await?;
+    let guid = sqlx::query_scalar(
         "SELECT guid FROM address_books WHERE owner_id = ? AND is_personal = TRUE",
     )
     .bind(user_id)
-    .fetch_optional(db)
+    .fetch_one(db)
     .await?;
-
-    if let Some(guid) = existing {
-        return Ok(guid);
-    }
-
-    let guid = Uuid::new_v4().to_string();
-    sqlx::query("INSERT INTO address_books (guid, name, owner_id, is_personal) VALUES (?, 'Personal', ?, TRUE)")
-        .bind(&guid)
-        .bind(user_id)
-        .execute(db)
-        .await?;
-
-    tracing::info!("Created personal address book for user {}", username);
+    tracing::debug!("Resolved personal address book for {username}");
     Ok(guid)
 }
 
@@ -60,6 +59,16 @@ async fn get_personal(
             note: String::new(),
         },
     }))
+}
+
+/// Native clients use a bodyless POST and read the root profile.
+/// GET retains the web console envelope.
+async fn get_personal_client(
+    state: State<AppState>,
+    user: AuthUser,
+) -> Result<Json<AbProfile>, ApiError> {
+    let Json(response) = get_personal(state, user).await?;
+    Ok(Json(response.data))
 }
 
 /// GET /api/ab — legacy endpoint, returns the entire address book as a JSON string.
@@ -95,16 +104,10 @@ async fn get_ab_legacy(
     }
     let tag_colors_str = serde_json::to_string(&tag_colors_map).unwrap_or_default();
 
-    // Build legacy peers with their tags
+    let mut all_tags = crate::routes::peers::peer_tags(&state.db, &peers).await?;
     let mut legacy_peers = Vec::new();
     for peer in &peers {
-        let peer_tags: Vec<String> = sqlx::query_scalar(
-            "SELECT t.name FROM tags t JOIN peer_tags pt ON t.id = pt.tag_id WHERE pt.peer_id = ?",
-        )
-        .bind(peer.id)
-        .fetch_all(&state.db)
-        .await
-        .unwrap_or_default();
+        let peer_tags = all_tags.remove(&peer.id).unwrap_or_default();
 
         legacy_peers.push(LegacyPeer {
             id: peer.rustdesk_id.clone(),
@@ -123,8 +126,8 @@ async fn get_ab_legacy(
         tag_colors: tag_colors_str,
     };
 
-    let data_str = serde_json::to_string(&ab_data)
-        .map_err(|e| ApiError::Internal(e.to_string()))?;
+    let data_str =
+        serde_json::to_string(&ab_data).map_err(|e| ApiError::Internal(e.to_string()))?;
 
     Ok(Json(LegacyAbResponse { data: data_str }))
 }
@@ -134,7 +137,7 @@ async fn update_ab_legacy(
     State(state): State<AppState>,
     AuthUser(claims): AuthUser,
     Json(req): Json<LegacyAbUpdateRequest>,
-) -> Result<Json<Value>, ApiError> {
+) -> Result<crate::routes::peers::StatusOk, ApiError> {
     let guid = ensure_personal_ab(&state.db, claims.user_id, &claims.sub).await?;
 
     let ab_data: LegacyAbData = serde_json::from_str(&req.data)
@@ -144,19 +147,20 @@ async fn update_ab_legacy(
     let tag_colors: std::collections::HashMap<String, i64> =
         serde_json::from_str(&ab_data.tag_colors).unwrap_or_default();
 
+    let mut tx = state.db.begin().await?;
     // Delete existing data and replace atomically
     // Delete peer_tags first (foreign key), then peers, then tags
     sqlx::query("DELETE FROM peer_tags WHERE peer_id IN (SELECT id FROM peers WHERE ab_guid = ?)")
         .bind(&guid)
-        .execute(&state.db)
+        .execute(&mut *tx)
         .await?;
     sqlx::query("DELETE FROM peers WHERE ab_guid = ?")
         .bind(&guid)
-        .execute(&state.db)
+        .execute(&mut *tx)
         .await?;
     sqlx::query("DELETE FROM tags WHERE ab_guid = ?")
         .bind(&guid)
-        .execute(&state.db)
+        .execute(&mut *tx)
         .await?;
 
     // Insert tags
@@ -166,7 +170,7 @@ async fn update_ab_legacy(
             .bind(&guid)
             .bind(tag_name)
             .bind(color)
-            .execute(&state.db)
+            .execute(&mut *tx)
             .await?;
     }
 
@@ -182,31 +186,31 @@ async fn update_ab_legacy(
         .bind(&peer.hostname)
         .bind(&peer.platform)
         .bind(&peer.alias)
-        .execute(&state.db)
+        .execute(&mut *tx)
         .await?;
 
         let peer_id = result.last_insert_rowid();
 
         for tag_name in &peer.tags {
-            let tag_id: Option<i64> = sqlx::query_scalar(
-                "SELECT id FROM tags WHERE ab_guid = ? AND name = ?",
-            )
-            .bind(&guid)
-            .bind(tag_name)
-            .fetch_optional(&state.db)
-            .await?;
+            let tag_id: Option<i64> =
+                sqlx::query_scalar("SELECT id FROM tags WHERE ab_guid = ? AND name = ?")
+                    .bind(&guid)
+                    .bind(tag_name)
+                    .fetch_optional(&mut *tx)
+                    .await?;
 
             if let Some(tag_id) = tag_id {
                 sqlx::query("INSERT OR IGNORE INTO peer_tags (peer_id, tag_id) VALUES (?, ?)")
                     .bind(peer_id)
                     .bind(tag_id)
-                    .execute(&state.db)
+                    .execute(&mut *tx)
                     .await?;
             }
         }
     }
 
-    Ok(Json(json!({})))
+    tx.commit().await?;
+    Ok(crate::routes::peers::StatusOk)
 }
 
 /// GET /api/ab/shared/profiles — returns shared address books the user has access to.
@@ -214,35 +218,28 @@ async fn get_shared_profiles(
     State(state): State<AppState>,
     AuthUser(claims): AuthUser,
 ) -> Result<Json<AbSharedProfilesResponse>, ApiError> {
-    // Find address books shared with this user directly or via groups
-    let shared: Vec<(String, String, i64, i32)> = sqlx::query_as(
-        "SELECT ab.guid, ab.name, ab.owner_id, s.rule
-         FROM address_books ab
-         JOIN ab_shares s ON ab.guid = s.ab_guid
+    let shared: Vec<(String, String, String, i32)> = sqlx::query_as(
+        "SELECT ab.guid, ab.name, u.username, MAX(s.rule)
+         FROM address_books ab JOIN users u ON u.id = ab.owner_id
+         JOIN ab_shares s ON s.ab_guid = ab.guid
          WHERE (s.user_id = ? OR s.group_id IN (SELECT group_id FROM user_groups WHERE user_id = ?))
-         AND ab.is_personal = FALSE",
+         AND s.rule BETWEEN 1 AND 3 AND ab.is_personal = FALSE
+         GROUP BY ab.guid ORDER BY ab.name, ab.guid",
     )
     .bind(claims.user_id)
     .bind(claims.user_id)
     .fetch_all(&state.db)
     .await?;
-
-    let mut profiles = Vec::new();
-    for (guid, name, owner_id, rule) in shared {
-        let owner_name: String = sqlx::query_scalar("SELECT username FROM users WHERE id = ?")
-            .bind(owner_id)
-            .fetch_optional(&state.db)
-            .await?
-            .unwrap_or_default();
-
-        profiles.push(AbProfile {
+    let profiles: Vec<AbProfile> = shared
+        .into_iter()
+        .map(|(guid, name, owner, rule)| AbProfile {
             guid,
             name,
-            owner: owner_name,
+            owner,
             rule,
             note: String::new(),
-        });
-    }
+        })
+        .collect();
 
     let total = profiles.len() as i64;
     Ok(Json(AbSharedProfilesResponse {

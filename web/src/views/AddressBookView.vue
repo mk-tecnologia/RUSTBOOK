@@ -1,63 +1,55 @@
 <script setup lang="ts">
-import { ref, onMounted, computed } from 'vue'
+import { ref, onMounted, onBeforeUnmount, watch } from 'vue'
 import { useAddressBookStore } from '../stores/addressBook'
 import PeerGrid from '../components/peers/PeerGrid.vue'
 import TagPanel from '../components/tags/TagPanel.vue'
 import AddPeerDialog from '../components/peers/AddPeerDialog.vue'
+import PaginationControls from '../components/ui/PaginationControls.vue'
+import ErrorNotice from '../components/ui/ErrorNotice.vue'
 
 const store = useAddressBookStore()
 const showAddPeer = ref(false)
-const search = ref('')
-
-onMounted(() => {
-  store.init()
+const search = ref(store.query)
+const saving = ref(false)
+const actionError = ref('')
+let timer: ReturnType<typeof setTimeout> | undefined
+onMounted(store.init)
+onBeforeUnmount(() => clearTimeout(timer))
+watch(search, () => {
+  clearTimeout(timer)
+  timer = setTimeout(() => store.setFilters(search.value, store.selectedTag), 250)
 })
-
-const displayedPeers = computed(() => {
-  let peers = store.filteredPeers()
-  if (search.value) {
-    const q = search.value.toLowerCase()
-    peers = peers.filter(p =>
-      p.id.toLowerCase().includes(q) ||
-      p.alias.toLowerCase().includes(q) ||
-      p.hostname.toLowerCase().includes(q) ||
-      p.username.toLowerCase().includes(q)
-    )
-  }
-  return peers
-})
-
+async function selectTag(tag: string | null) {
+  clearTimeout(timer)
+  await store.setFilters(search.value, tag)
+}
+async function action(work: () => Promise<void>) {
+  if (saving.value) return
+  actionError.value = ''; saving.value = true
+  try { await work() } catch (e) { actionError.value = e instanceof Error ? e.message : 'Operation failed' }
+  finally { saving.value = false }
+}
 async function handleAddPeer(peer: { id: string; alias: string; platform: string; tags: string[] }) {
-  await store.addPeer(peer)
-  showAddPeer.value = false
+  await action(async () => { await store.addPeer(peer); showAddPeer.value = false })
 }
-
 async function handleDeletePeer(id: string) {
-  if (confirm(`Remove peer ${id}?`)) {
-    await store.removePeer([id])
-  }
+  if (confirm(`Remove peer ${id}?`)) await action(() => store.removePeer([id]))
 }
-
-async function handleAddTag(name: string, color: number) {
-  await store.addTag(name, color)
-}
-
+async function handleAddTag(name: string, color: number) { await action(() => store.addTag(name, color)) }
 async function handleDeleteTag(name: string) {
-  if (confirm(`Delete tag "${name}"?`)) {
-    await store.removeTag([name])
-  }
+  if (confirm(`Delete tag "${name}"?`)) await action(() => store.removeTag([name]))
 }
 </script>
 
 <template>
-  <div class="flex gap-6 h-full">
+  <div class="flex flex-col lg:flex-row gap-6">
     <!-- Tag sidebar -->
-    <div class="w-48 shrink-0">
+    <div class="w-full lg:w-48 shrink-0">
       <div class="bg-white dark:bg-rd-card border border-gray-200 dark:border-rd-border rounded-xl p-4">
         <TagPanel
           :tags="store.tags"
           :selected-tag="store.selectedTag"
-          @select="store.selectedTag = $event"
+          @select="selectTag"
           @add="handleAddTag"
           @delete="handleDeleteTag"
         />
@@ -67,12 +59,12 @@ async function handleDeleteTag(name: string) {
     <!-- Main content -->
     <div class="flex-1 min-w-0">
       <!-- Toolbar -->
-      <div class="flex items-center justify-between mb-4">
-        <div class="flex items-center gap-3">
+      <div class="flex flex-wrap items-center justify-between gap-3 mb-4">
+        <div class="flex flex-wrap items-center gap-3">
           <h1 class="text-lg font-semibold text-gray-900 dark:text-rd-text">Address Book</h1>
           <span class="text-sm text-gray-500 dark:text-rd-text-secondary">{{ store.totalPeers }} peers</span>
         </div>
-        <div class="flex items-center gap-3">
+        <div class="flex flex-wrap items-center gap-3">
           <!-- Search -->
           <div class="relative">
             <svg class="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -80,7 +72,9 @@ async function handleDeleteTag(name: string) {
             </svg>
             <input
               v-model="search"
-              type="text"
+              aria-label="Search peers"
+              maxlength="128"
+              type="search"
               placeholder="Search peers..."
               class="pl-9 pr-3 py-2 text-sm rounded-lg border border-gray-300 dark:border-rd-border bg-white dark:bg-rd-card text-gray-900 dark:text-rd-text focus:outline-none focus:ring-2 focus:ring-rd-primary w-56"
             />
@@ -98,14 +92,17 @@ async function handleDeleteTag(name: string) {
         </div>
       </div>
 
+      <ErrorNotice :message="actionError" />
+      <ErrorNotice :message="store.error" retry @retry="store.init" />
       <!-- Peer grid -->
       <div v-if="store.loading" class="flex items-center justify-center py-20">
         <div class="w-8 h-8 border-2 border-rd-primary border-t-transparent rounded-full animate-spin" />
       </div>
-      <PeerGrid v-else :peers="displayedPeers" @delete="handleDeletePeer" />
+      <PeerGrid v-else-if="!store.error" :peers="store.peers" @delete="handleDeletePeer" />
+      <PaginationControls :page="store.page" :page-size="store.pageSize" :total="store.totalPeers" :loading="store.loading" @change="(page) => { store.page = page; store.loadPeers() }" />
     </div>
   </div>
 
   <!-- Add peer dialog -->
-  <AddPeerDialog v-if="showAddPeer" @close="showAddPeer = false" @add="handleAddPeer" />
+  <AddPeerDialog v-if="showAddPeer" :busy="saving" :server-error="actionError" @close="showAddPeer = false" @add="handleAddPeer" />
 </template>

@@ -1,22 +1,23 @@
 const BASE_URL = ''
 
 export class ApiError extends Error {
-  constructor(public status: number, message: string) {
+  public status: number
+
+  constructor(status: number, message: string) {
     super(message)
+    this.status = status
   }
 }
 
-export async function api<T = any>(
+export async function api<T = unknown>(
   path: string,
   options: RequestInit = {}
 ): Promise<T> {
   const token = localStorage.getItem('token')
-  const headers: Record<string, string> = {
-    'Content-Type': 'application/json',
-    ...(options.headers as Record<string, string> || {}),
-  }
+  const headers = new Headers(options.headers)
+  headers.set('Content-Type', 'application/json')
   if (token) {
-    headers['Authorization'] = `Bearer ${token}`
+    headers.set('Authorization', `Bearer ${token}`)
   }
 
   const res = await fetch(`${BASE_URL}${path}`, {
@@ -24,15 +25,13 @@ export async function api<T = any>(
     headers,
   })
 
-  if (res.status === 401) {
-    localStorage.removeItem('token')
-    localStorage.removeItem('user')
-    window.location.href = '/login'
-    throw new ApiError(401, 'Unauthorized')
-  }
-
   if (!res.ok) {
-    const body = await res.json().catch(() => ({}))
+    const body = await res.json().catch(() => ({})) as { error?: string }
+    if (res.status === 401 && path !== '/api/login') {
+      localStorage.removeItem('token')
+      localStorage.removeItem('user')
+      window.location.assign('/login')
+    }
     throw new ApiError(res.status, body.error || res.statusText)
   }
 

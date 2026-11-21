@@ -69,3 +69,12 @@ pub struct UserListItem {
     pub status: i32,
     pub created_at: String,
 }
+
+#[derive(Debug, Deserialize)]
+pub struct UpdateUserRequest {
+    pub name: Option<String>,
+    pub email: Option<String>,
+    pub is_admin: Option<bool>,
+    pub status: Option<i32>,
+    pub password: Option<String>,
+}

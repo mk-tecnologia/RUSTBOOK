@@ -22,3 +22,9 @@ pub struct CreateGroupRequest {
     #[serde(default)]
     pub note: String,
 }
+
+#[derive(Debug, Deserialize)]
+pub struct UpdateGroupRequest {
+    pub name: Option<String>,
+    pub note: Option<String>,
+}

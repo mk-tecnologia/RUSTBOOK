@@ -10,11 +10,19 @@ db_path = "data/db.sqlite3"
 
 # JWT secret for signing auth tokens (CHANGE THIS IN PRODUCTION)
 # If not set, a random secret is generated on each startup.
-jwt_secret = "change-me-to-a-long-random-string"
+# jwt_secret = "replace-with-output-of-openssl-rand-hex-32"
 
 # Default admin credentials (only used on first run)
 admin_username = "admin"
-admin_password = "admin"
+# Required on first run; use at least 12 characters.
+admin_password = ""
 
 # Token expiry in hours (default: 168 = 7 days)
 token_expiry_hours = 168
+
+# Exact browser origins; empty means same-origin only.
+cors_origins = []
+
+# Compatibility option for clients that send device events without signing in.
+# Only enable on a trusted private network or behind a restricted proxy.
+allow_unauthenticated_device_events = false

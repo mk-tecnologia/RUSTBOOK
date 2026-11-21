@@ -1,6 +1,8 @@
 <script setup lang="ts">
 import { ref, onMounted } from 'vue'
 import { api } from '../api/client'
+import PaginationControls from '../components/ui/PaginationControls.vue'
+import ErrorNotice from '../components/ui/ErrorNotice.vue'
 
 interface AuditEntry {
   id: number
@@ -14,14 +16,20 @@ interface AuditEntry {
 
 const entries = ref<AuditEntry[]>([])
 
-onMounted(async () => {
+const page = ref(1)
+const total = ref(0)
+const loading = ref(false)
+const error = ref('')
+async function load(nextPage = page.value) {
+  loading.value = true; error.value = ''
   try {
-    const res = await api('/api/audit-log')
-    entries.value = res.data || []
-  } catch {
-    // endpoint may not exist yet, show empty
-  }
-})
+    const params = new URLSearchParams({ current: String(nextPage), pageSize: '50' })
+    const res = await api<{ data: AuditEntry[]; total: number }>(`/api/audit-log?${params}`)
+    entries.value = res.data; total.value = res.total; page.value = nextPage
+  } catch (e) { error.value = e instanceof Error ? e.message : 'Unable to load audit log' }
+  finally { loading.value = false }
+}
+onMounted(() => load())
 
 function actionBadgeClass(action: string) {
   switch (action) {
@@ -37,7 +45,9 @@ function actionBadgeClass(action: string) {
   <div>
     <h1 class="text-lg font-semibold text-gray-900 dark:text-rd-text mb-6">Audit Log</h1>
 
-    <div class="bg-white dark:bg-rd-card border border-gray-200 dark:border-rd-border rounded-xl overflow-hidden">
+    <ErrorNotice :message="error" retry @retry="load()" />
+    <p v-if="loading" role="status" class="text-sm py-4">Loading audit log…</p>
+    <div v-else-if="!error" class="bg-white dark:bg-rd-card border border-gray-200 dark:border-rd-border rounded-xl overflow-x-auto">
       <table class="w-full">
         <thead>
           <tr class="border-b border-gray-200 dark:border-rd-border">
@@ -70,5 +80,6 @@ function actionBadgeClass(action: string) {
         No audit entries yet. Entries will appear as devices connect.
       </div>
     </div>
+    <PaginationControls :page="page" :page-size="50" :total="total" :loading="loading" @change="load" />
   </div>
 </template>
