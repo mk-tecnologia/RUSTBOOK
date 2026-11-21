@@ -60,3 +60,14 @@ Estas pastas pertencem à agenda do console. Não implementam grupos/ACLs do inv
 nativo da aba Dispositivos do cliente RustDesk. Essa API continua com suas restrições
 anteriores. As tags mantêm o contrato existente do cliente. Confira o
 [guia de compatibilidade](COMPATIBILIDADE-RUSTDESK.md) e homologue seus clientes.
+
+## Conectar pelo painel
+
+Na lista de dispositivos, clique no ícone azul de conexão nas ações da linha.
+O navegador solicita abrir o RustDesk instalado neste computador e envia o ID
+pelo protocolo `rustdesk://connect/ID`. O cliente usa os servidores já configurados
+e solicita a senha remota ou a aprovação de acesso conforme a configuração do peer.
+A conexão acontece no aplicativo nativo. É necessário ter RustDesk instalado e
+associado ao protocolo; o navegador pode pedir confirmação para abri-lo.
+O link não carrega senha, chave nem token da agenda. Presença desconhecida/offline
+não bloqueia a tentativa de conexão. Para editar o dispositivo, use o lápis.

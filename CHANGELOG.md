@@ -7,6 +7,13 @@ manifesto upstream é `0.1.0`; não são inventadas releases anteriores do upstr
 
 Sem alterações pendentes.
 
+## [0.6.0] - 2026-11-21
+
+- Ação de conexão por dispositivo na agenda web, abrindo o cliente instalado via
+  `rustdesk://connect/ID`, com ícone azul, tooltip e rótulo acessível.
+- Links usam somente o ID e preservam a configuração e autenticação do cliente;
+  senhas e chaves não são incluídas. IDs inválidos não geram links.
+
 ## [0.5.2] - 2026-11-21
 
 - Ações de usuários compactas, apenas com ícones: editar azul, desativar âmbar,
