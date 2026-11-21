@@ -1000,3 +1000,417 @@ async fn running_server_version_is_public_and_not_cacheable() {
         })
     );
 }
+
+async fn device_group(f: &Fixture, guid: &str, name: &str) -> i64 {
+    let (status, body) = f
+        .call(
+            "POST",
+            &format!("/api/ab/peer-groups/{guid}"),
+            &f.admin,
+            json!({"name":name,"note":"Site devices"}),
+        )
+        .await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    body["id"].as_i64().unwrap()
+}
+
+#[tokio::test]
+async fn device_groups_connect_peers_tags_filters_and_safe_deletion() {
+    let f = Fixture::new().await;
+    let group = device_group(&f, "shared", "Branch South").await;
+    assert_eq!(
+        f.call(
+            "POST",
+            "/api/ab/peer/add/shared",
+            &f.admin,
+            json!({"id":"200","alias":"Office","group_id":group,"tags":["work"]})
+        )
+        .await
+        .0,
+        StatusCode::OK
+    );
+    let (_, overview) = f
+        .call("GET", "/api/ab/peer-groups/shared", &f.admin, Value::Null)
+        .await;
+    assert_eq!(overview["total"], 2);
+    assert_eq!(overview["ungrouped_count"], 1);
+    assert_eq!(overview["data"][0]["peer_count"], 1);
+    let (_, page) = f
+        .call(
+            "GET",
+            &format!("/api/ab/peers?ab=shared&group={group}&tag=work&q=office"),
+            &f.admin,
+            Value::Null,
+        )
+        .await;
+    assert_eq!(page["total"], 1);
+    assert_eq!(page["data"][0]["id"], "200");
+    assert_eq!(page["data"][0]["group_id"], group);
+    let (_, filtered) = f
+        .call(
+            "GET",
+            "/api/ab/peer-groups/shared?q=office&tag=work",
+            &f.admin,
+            Value::Null,
+        )
+        .await;
+    assert_eq!(filtered["total"], 1);
+    assert_eq!(filtered["ungrouped_count"], 0);
+    assert_eq!(
+        f.call(
+            "PUT",
+            &format!("/api/ab/peer-groups/shared/{group}"),
+            &f.admin,
+            json!({"name":"Branch renamed","note":"Updated"})
+        )
+        .await
+        .0,
+        StatusCode::OK
+    );
+    assert_eq!(
+        f.call(
+            "DELETE",
+            &format!("/api/ab/peer-groups/shared/{group}"),
+            &f.admin,
+            Value::Null
+        )
+        .await
+        .0,
+        StatusCode::OK
+    );
+    let (_, page) = f
+        .call(
+            "GET",
+            "/api/ab/peers?ab=shared&group=ungrouped",
+            &f.admin,
+            Value::Null,
+        )
+        .await;
+    assert_eq!(page["total"], 2);
+    let peer = page["data"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|peer| peer["id"] == "200")
+        .unwrap();
+    assert_eq!(peer["tags"], json!(["work"]));
+    assert!(peer.get("group_id").is_none());
+}
+
+#[tokio::test]
+async fn device_groups_obey_book_permissions_and_scope() {
+    let f = Fixture::new().await;
+    let group = device_group(&f, "shared", "Readers can see").await;
+    let foreign = device_group(&f, "personal", "Private").await;
+    assert_eq!(
+        f.call("GET", "/api/ab/peer-groups/shared", &f.member, Value::Null)
+            .await
+            .0,
+        StatusCode::OK
+    );
+    assert_eq!(
+        f.call(
+            "GET",
+            "/api/ab/peer-groups/shared",
+            &f.outsider,
+            Value::Null
+        )
+        .await
+        .0,
+        StatusCode::FORBIDDEN
+    );
+    for (method, path, body) in [
+        (
+            "POST",
+            "/api/ab/peer-groups/shared".to_string(),
+            json!({"name":"Denied"}),
+        ),
+        (
+            "PUT",
+            format!("/api/ab/peer-groups/shared/{group}"),
+            json!({"name":"Denied"}),
+        ),
+        (
+            "DELETE",
+            format!("/api/ab/peer-groups/shared/{group}"),
+            Value::Null,
+        ),
+        (
+            "PUT",
+            "/api/ab/peer/update/shared".to_string(),
+            json!({"id":"100","group_id":group}),
+        ),
+    ] {
+        assert_eq!(
+            f.call(method, &path, &f.member, body).await.0,
+            StatusCode::FORBIDDEN
+        );
+    }
+    assert_eq!(
+        f.call(
+            "PUT",
+            "/api/ab/peer/update/shared",
+            &f.admin,
+            json!({"id":"100","group_id":foreign,"alias":"Must roll back"})
+        )
+        .await
+        .0,
+        StatusCode::BAD_REQUEST
+    );
+    let alias: String = sqlx::query_scalar("SELECT alias FROM peers WHERE rustdesk_id = '100'")
+        .fetch_one(&f.db)
+        .await
+        .unwrap();
+    assert_eq!(alias, "Original");
+    assert!(
+        sqlx::query("UPDATE peers SET group_id = ? WHERE ab_guid = 'shared'")
+            .bind(foreign)
+            .execute(&f.db)
+            .await
+            .is_err()
+    );
+    assert_eq!(
+        f.call(
+            "DELETE",
+            &format!("/api/ab/peer-groups/shared/{foreign}"),
+            &f.admin,
+            Value::Null
+        )
+        .await
+        .0,
+        StatusCode::NOT_FOUND
+    );
+    assert_eq!(
+        f.call(
+            "GET",
+            "/api/ab/peers?ab=shared&group=invalid",
+            &f.admin,
+            Value::Null
+        )
+        .await
+        .0,
+        StatusCode::BAD_REQUEST
+    );
+}
+
+#[tokio::test]
+async fn native_and_legacy_updates_preserve_groups_and_null_explicitly_ungroups() {
+    let f = Fixture::new().await;
+    let group = device_group(&f, "personal", "Keep this folder").await;
+    assert_eq!(
+        f.call(
+            "POST",
+            "/api/ab/peer/add/personal",
+            &f.admin,
+            json!({"id":"901","group_id":group})
+        )
+        .await
+        .0,
+        StatusCode::OK
+    );
+    assert_eq!(
+        f.call(
+            "POST",
+            "/api/ab/peer/add/personal",
+            &f.admin,
+            json!({"id":"901","alias":"Native upsert","note":"Keep note across legacy sync"})
+        )
+        .await
+        .0,
+        StatusCode::OK
+    );
+    let data = json!({"tags":[],"peers":[{"id":"901","alias":"Legacy retained"},{"id":"902"}],"tag_colors":"{}"});
+    assert_eq!(
+        f.call(
+            "POST",
+            "/api/ab",
+            &f.admin,
+            json!({"data":data.to_string()})
+        )
+        .await
+        .0,
+        StatusCode::OK
+    );
+    let (_, peers) = f
+        .call(
+            "GET",
+            &format!("/api/ab/peers?ab=personal&group={group}"),
+            &f.admin,
+            Value::Null,
+        )
+        .await;
+    assert_eq!(peers["total"], 1);
+    assert_eq!(peers["data"][0]["id"], "901");
+    assert_eq!(peers["data"][0]["note"], "Keep note across legacy sync");
+    assert_eq!(
+        f.call(
+            "PUT",
+            "/api/ab/peer/update/personal",
+            &f.admin,
+            json!({"id":"901","alias":"Edited"})
+        )
+        .await
+        .0,
+        StatusCode::OK
+    );
+    let (_, peers) = f
+        .call(
+            "GET",
+            &format!("/api/ab/peers?ab=personal&group={group}"),
+            &f.admin,
+            Value::Null,
+        )
+        .await;
+    assert_eq!(peers["total"], 1);
+    assert_eq!(
+        f.call(
+            "PUT",
+            "/api/ab/peer/update/personal",
+            &f.admin,
+            json!({"id":"901","group_id":null,"tags":[]})
+        )
+        .await
+        .0,
+        StatusCode::OK
+    );
+    let (_, peers) = f
+        .call(
+            "GET",
+            "/api/ab/peers?ab=personal&group=ungrouped",
+            &f.admin,
+            Value::Null,
+        )
+        .await;
+    assert_eq!(peers["total"], 2);
+}
+
+#[tokio::test]
+async fn web_duplicate_creation_does_not_overwrite_and_invalid_tags_roll_back_group_move() {
+    let f = Fixture::new().await;
+    let group = device_group(&f, "shared", "Target").await;
+    assert_eq!(
+        f.call(
+            "POST",
+            "/api/ab/peer/add/shared",
+            &f.admin,
+            json!({"id":"100","alias":"Overwrite","tags":[],"group_id":group,"fail_if_exists":true})
+        )
+        .await
+        .0,
+        StatusCode::CONFLICT
+    );
+    assert_eq!(
+        f.call(
+            "PUT",
+            "/api/ab/peer/update/shared",
+            &f.admin,
+            json!({"id":"100","alias":"Overwrite","group_id":group,"tags":["missing"]})
+        )
+        .await
+        .0,
+        StatusCode::BAD_REQUEST
+    );
+    let (_, peers) = f
+        .call(
+            "GET",
+            "/api/ab/peers?ab=shared&group=ungrouped",
+            &f.admin,
+            Value::Null,
+        )
+        .await;
+    assert_eq!(peers["data"][0]["alias"], "Original");
+    assert_eq!(peers["data"][0]["tags"], json!(["work"]));
+    assert_eq!(
+        f.call(
+            "POST",
+            "/api/ab/peer-groups/shared",
+            &f.admin,
+            json!({"name":" Target "})
+        )
+        .await
+        .0,
+        StatusCode::CONFLICT
+    );
+}
+
+#[tokio::test]
+async fn saved_peer_ids_do_not_grant_inventory_status_to_non_admins() {
+    let f = Fixture::new().await;
+    sqlx::query("INSERT INTO devices(rustdesk_id, hostname, last_online) VALUES ('100', 'Not exposed', CURRENT_TIMESTAMP)")
+        .execute(&f.db).await.unwrap();
+    let (_, admin) = f
+        .call("GET", "/api/ab/peers?ab=shared", &f.admin, Value::Null)
+        .await;
+    assert_eq!(admin["data"][0]["online"], true);
+    let (_, member) = f
+        .call("GET", "/api/ab/peers?ab=shared", &f.member, Value::Null)
+        .await;
+    assert!(member["data"][0].get("online").is_none());
+}
+
+#[tokio::test]
+async fn device_group_pagination_is_independent_and_write_shares_can_organize() {
+    let f = Fixture::new().await;
+    let first = device_group(&f, "shared", "First").await;
+    let second = device_group(&f, "shared", "Second").await;
+    for number in 0..70 {
+        sqlx::query("INSERT INTO peers(ab_guid,rustdesk_id,group_id) VALUES ('shared',?,?)")
+            .bind(format!("p{number:03}"))
+            .bind(first)
+            .execute(&f.db)
+            .await
+            .unwrap();
+    }
+    sqlx::query("INSERT INTO peers(ab_guid,rustdesk_id,group_id) VALUES ('shared','other',?)")
+        .bind(second)
+        .execute(&f.db)
+        .await
+        .unwrap();
+    let (_, page) = f
+        .call(
+            "GET",
+            &format!("/api/ab/peers?ab=shared&group={first}&current=3&pageSize=24"),
+            &f.admin,
+            Value::Null,
+        )
+        .await;
+    assert_eq!(page["total"], 70);
+    assert_eq!(page["data"].as_array().unwrap().len(), 22);
+    assert!(page["data"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .all(|peer| peer["group_id"] == first));
+    let (_, overview) = f
+        .call("GET", "/api/ab/peer-groups/shared", &f.member, Value::Null)
+        .await;
+    assert_eq!(overview["total"], 72);
+    assert_eq!(overview["ungrouped_count"], 1);
+    assert_eq!(overview["data"][0]["peer_count"], 70);
+    sqlx::query("UPDATE ab_shares SET rule = 2 WHERE ab_guid = 'shared' AND user_id = 2")
+        .execute(&f.db)
+        .await
+        .unwrap();
+    assert_eq!(
+        f.call(
+            "POST",
+            "/api/ab/peer-groups/shared",
+            &f.member,
+            json!({"name":"Created by editor"})
+        )
+        .await
+        .0,
+        StatusCode::OK
+    );
+    assert_eq!(
+        f.call(
+            "PUT",
+            "/api/ab/peer/update/shared",
+            &f.member,
+            json!({"id":"100","group_id":second})
+        )
+        .await
+        .0,
+        StatusCode::OK
+    );
+}

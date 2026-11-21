@@ -41,7 +41,7 @@ onMounted(loadGroups)
 <template>
   <div>
     <div class="flex items-center justify-between mb-6">
-      <h1 class="text-lg font-semibold text-gray-900 dark:text-rd-text">Groups</h1>
+      <h1 class="text-lg font-semibold text-gray-900 dark:text-rd-text">User groups</h1>
       <button :disabled="pending"
         @click="showAdd = true"
         class="px-4 py-2 text-sm rounded-lg bg-rd-primary hover:bg-rd-primary-hover text-white font-medium transition-colors flex items-center gap-2"
@@ -49,16 +49,17 @@ onMounted(loadGroups)
         <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
           <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4" />
         </svg>
-        Add Group
+        Add User Group
       </button>
     </div>
 
+    <p class="mb-4 text-sm text-gray-500 dark:text-rd-text-secondary">User groups are used for access permissions. Organize devices into folders on the Devices page.</p>
     <ErrorNotice :message="error" retry @retry="loadGroups" />
     <p v-if="pending" role="status" class="my-3 text-sm text-gray-500">Working…</p>
 
     <!-- Add group form -->
     <form @submit.prevent="handleCreate" v-if="showAdd" class="bg-white dark:bg-rd-card border border-gray-200 dark:border-rd-border rounded-xl p-6 mb-6">
-      <h2 class="text-sm font-semibold text-gray-900 dark:text-rd-text mb-4">New Group</h2>
+      <h2 class="text-sm font-semibold text-gray-900 dark:text-rd-text mb-4">New User Group</h2>
       <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
         <div>
           <label for="newGroup-name" class="block text-xs font-medium text-gray-600 dark:text-rd-text-secondary mb-1">Name *</label>

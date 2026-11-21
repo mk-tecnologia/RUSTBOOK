@@ -51,7 +51,7 @@ Isso não substitui homologação com o aplicativo real.
 | `GET/POST /api/ab/personal`, `GET/POST /api/ab/shared/profiles` | Perfis; POST pessoal retorna `guid` na raiz |
 | `GET/POST /api/ab/settings` | Configuração da agenda |
 | `GET /api/ab`, `POST /api/ab` | Leitura/substituição legada transacional |
-| `GET/POST /api/ab/peers` | `ab`, `current`, `pageSize` (1–100), `q` e `tag` |
+| `GET/POST /api/ab/peers` | `ab`, `current`, `pageSize` (1–100), `q`, `tag` e `group` (`ID` ou `ungrouped`) |
 | `POST /api/ab/peer/add/{guid}` | Inserir/upsert |
 | `PUT /api/ab/peer/update/{guid}` | Atualização parcial, campo `id` obrigatório |
 | `DELETE /api/ab/peer/{guid}` | Lista de IDs ou objeto `{ "ids": [...] }` |
@@ -59,6 +59,8 @@ Isso não substitui homologação com o aplicativo real.
 | `POST /api/ab/tag/add/{guid}` | Adicionar tag |
 | `PUT /api/ab/tag/rename/{guid}`, `PUT /api/ab/tag/update/{guid}` | Nome/cor da tag |
 | `DELETE /api/ab/tag/{guid}` | Lista de nomes ou objeto `{ "names": [...] }` |
+| `GET/POST /api/ab/peer-groups/{guid}` | Listar contagens filtradas/criar grupos da agenda |
+| `PUT/DELETE /api/ab/peer-groups/{guid}/{id}` | Editar/excluir pasta; excluir mantém peers e tags |
 | `GET /api/peers`, `GET /api/device-group/accessible` | Inventário e grupos de dispositivos acessíveis |
 | `GET /api/users?accessible=&status=1` | Perfis ativos acessíveis no formato do cliente |
 | `GET/POST /api/users`, `PUT/DELETE /api/users/{id}` | Administração de usuários |
@@ -72,3 +74,9 @@ controle; as operações atuais de peers/tags exigem ao menos `2`. Ser administr
 não dá acesso implícito a agendas alheias. Alteração de senha ou status revoga
 sessões; alterações de papel são aplicadas na próxima requisição. Revogação não
 cancela requisições que já estavam em andamento.
+
+Na agenda, `group_id` nos peers é opcional: omitir preserva a associação e enviar
+`null` move para **Ungrouped**. `tags` aceita uma lista de nomes existentes; `[]`
+remove as associações. O painel usa `fail_if_exists: true` no cadastro para evitar
+substituir um ID existente. As respostas podem incluir `group_id` e, para admins
+com relato de inventário disponível, `online`. As pastas não alteram permissões.

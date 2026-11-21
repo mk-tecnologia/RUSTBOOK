@@ -4,7 +4,8 @@
 
 A versão inicial herdada é `0.1.0`. `0.2.0` foi usada em commits de
 desenvolvimento, sem tag/release. A primeira release de produto desta continuação
-é `0.3.0`, com imagens prontas e identificação do build. Backend e frontend são distribuídos juntos e usam a mesma
+é `0.3.0`, com imagens prontas e identificação do build. A versão `0.4.0`
+adiciona pastas de dispositivos e associação de tags no console. Backend e frontend são distribuídos juntos e usam a mesma
 versão, apesar de o pacote web ser privado.
 
 - `Cargo.toml` é a fonte da versão do produto.

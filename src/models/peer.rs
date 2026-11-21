@@ -13,6 +13,7 @@ pub struct Peer {
     pub note: String,
     pub created_at: String,
     pub updated_at: String,
+    pub group_id: Option<i64>,
 }
 
 /// Peer as returned to the RustDesk client.
@@ -26,6 +27,10 @@ pub struct PeerPayload {
     pub alias: String,
     pub tags: Vec<String>,
     pub note: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub group_id: Option<i64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub online: Option<bool>,
 }
 
 /// Request to add a peer.
@@ -46,6 +51,10 @@ pub struct AddPeerRequest {
     pub tags: Option<Vec<String>>,
     #[serde(default)]
     pub note: String,
+    #[serde(default, deserialize_with = "deserialize_group")]
+    pub group_id: Option<Option<i64>>,
+    #[serde(default)]
+    pub fail_if_exists: bool,
 }
 
 /// Request to update a peer.
@@ -66,6 +75,15 @@ pub struct UpdatePeerRequest {
     pub tags: Option<Vec<String>>,
     #[serde(default)]
     pub note: Option<String>,
+    #[serde(default, deserialize_with = "deserialize_group")]
+    pub group_id: Option<Option<i64>>,
+}
+
+// Omitted means preserve the current group; JSON null explicitly ungroups a peer.
+fn deserialize_group<'de, D: serde::Deserializer<'de>>(
+    input: D,
+) -> Result<Option<Option<i64>>, D::Error> {
+    Ok(Some(Option::<i64>::deserialize(input)?))
 }
 
 /// Response for GET /api/ab/peers.

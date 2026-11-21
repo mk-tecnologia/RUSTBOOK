@@ -29,7 +29,7 @@ e transações já estão cobertas pela suíte anterior.
 | Consulta | Comportamento |
 | --- | --- |
 | `GET /api/peers` | Admin recebe inventário paginado; usuários comuns recebem `data: []`, `total: 0` |
-| `GET /api/device-group/accessible` | Autenticado; retorna lista vazia porque grupos de dispositivos não estão implementados |
+| `GET /api/device-group/accessible` | Autenticado; retorna lista vazia porque grupos/ACLs do inventário nativo não estão implementados |
 | `GET /api/users?accessible=&status=1` | Admin recebe perfis ativos; usuário comum recebe somente seu perfil ativo |
 | `GET /api/users` sem `accessible` | Mantém o contrato administrativo existente; usuários comuns recebem 403 |
 
@@ -154,3 +154,14 @@ e [payloads](https://github.com/rustdesk/rustdesk/blob/master/flutter/lib/common
   e `no-new-privileges`; container temporário removido após o teste.
 - `.env`, backups e bancos do servidor não foram acessados. A instalação informada
   não foi alterada, reiniciada ou substituída.
+
+## Organização da agenda em 0.4.0
+
+O console tem pastas de dispositivos por agenda, independentes dos grupos
+administrativos de usuários e do inventário nativo. Consulte [grupos e tags](GRUPOS-E-TAGS.md).
+A associação opcional `group_id` não altera os campos usados pelo cliente. O
+[parser de peers do cliente](https://github.com/rustdesk/rustdesk/blob/master/flutter/lib/models/peer_model.dart)
+consulta os campos conhecidos e não depende desse campo adicional. Ao atualizar
+um peer sem `group_id`, a pasta é preservada; o POST legado completo também
+preserva a pasta por RustDesk ID retido. Os testes incluem esses contratos,
+permissões, paginação, rollback de tags inválidas e exclusão de grupos sem apagar peers.

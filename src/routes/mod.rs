@@ -4,6 +4,7 @@ pub mod auth;
 pub mod devices;
 pub mod frontend;
 pub mod groups;
+pub mod peer_groups;
 pub mod peers;
 pub mod system;
 pub mod tags;
@@ -19,6 +20,7 @@ pub fn api_router() -> Router<AppState> {
         .merge(devices::routes())
         .merge(ab::routes())
         .merge(peers::routes())
+        .merge(peer_groups::routes())
         .merge(tags::routes())
         .merge(system::routes())
         .merge(users::routes())

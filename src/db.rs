@@ -56,6 +56,10 @@ const MIGRATIONS: &[(&str, &str)] = &[
         "008_sessions_and_indexes.sql",
         include_str!("../migrations/008_sessions_and_indexes.sql"),
     ),
+    (
+        "009_peer_groups.sql",
+        include_str!("../migrations/009_peer_groups.sql"),
+    ),
 ];
 
 pub async fn run_migrations(pool: &SqlitePool) {

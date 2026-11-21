@@ -9,12 +9,12 @@ const auth = useAuthStore()
 const navItems = computed(() => {
   const items = [
     { name: 'Dashboard', path: '/', icon: 'grid' },
-    { name: 'Address Book', path: '/address-book', icon: 'book' },
+    { name: 'Devices', path: '/address-book', icon: 'book' },
   ]
   if (auth.isAdmin) {
     items.push(
       { name: 'Users', path: '/users', icon: 'users' },
-      { name: 'Groups', path: '/groups', icon: 'folder' },
+      { name: 'User groups', path: '/groups', icon: 'folder' },
       { name: 'Audit Log', path: '/audit-log', icon: 'list' },
     )
   }

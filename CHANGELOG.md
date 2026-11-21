@@ -7,6 +7,35 @@ manifesto upstream é `0.1.0`; não são inventadas releases anteriores do upstr
 
 Sem alterações pendentes.
 
+## [0.4.0] - 2026-11-21
+
+### Added
+
+- Grupos de dispositivos por agenda, com criação, edição e exclusão, organizados
+  em linhas expansíveis com contagem e paginação independente por pasta.
+- Seleção de grupo e múltiplas tags ao adicionar ou editar um dispositivo.
+- Criação de tags com cor diretamente no formulário do dispositivo e na lateral.
+- Busca e filtro por tag aplicados aos grupos e seus dispositivos.
+- Estado online/offline para admins quando há um relato de inventário disponível;
+  status desconhecido permanece explícito quando não há acesso ao relato.
+
+### Fixed
+
+- O formulário deixa de enviar tags vazias obrigatoriamente e permite atribuir
+  tags aos peers existentes.
+- Cadastro duplicado pelo painel retorna conflito sem apagar nome, tags ou grupo.
+- Atualizações nativas parciais e substituições legadas preservam a pasta de cada
+  RustDesk ID quando o cliente não informa um grupo.
+
+### Compatibility
+
+- Migração aditiva `009_peer_groups.sql`; peers existentes permanecem sem grupo.
+- Excluir uma pasta desassocia seus peers, preservando dispositivos e tags.
+- Pastas respeitam as permissões da agenda e não concedem acesso a outras agendas.
+- Grupos administrativos de usuários e seus vínculos são preservados separadamente.
+- Faça backup antes de atualizar; um rollback para 0.3.0 deve restaurar o banco
+  anterior, conforme o procedimento de operação.
+
 ## [0.3.0] - 2026-11-21
 
 ### Added

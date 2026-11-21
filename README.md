@@ -23,7 +23,7 @@ Se estiver usando uma conta comum, entre como root com `su -` antes de executar.
 **O mesmo comando instala e atualiza.** Ele baixa a imagem pronta mais recente
 publicada pela CI para **amd64 ou arm64**, verifica sua integridade e aplica a
 atualização. **Não compila no servidor.** Se o mesmo commit já estiver em execução
-e saudável, termina sem baixar a imagem ou reiniciar. Versão atual: **[0.3.0](https://github.com/mk-tecnologia/RUSTBOOK/releases/tag/v0.3.0)**.
+e saudável, termina sem baixar a imagem ou reiniciar. Versão atual: **[0.4.0](https://github.com/mk-tecnologia/RUSTBOOK/releases/tag/v0.4.0)**.
 
 O instalador:
 
@@ -39,6 +39,18 @@ O instalador:
 reconhece a instalação Compose e atualiza no diretório existente, sem importação
 manual. Veja os [requisitos de reconhecimento](docs/INSTALACAO.md#migrar-uma-agenda-existente).
 Homologue a atualização com seu cliente RustDesk antes de aplicá-la em produção.
+
+## Organizar dispositivos
+
+Na página **Devices**, use **New group** para criar pastas por cliente ou local.
+Em **Add device**, escolha o grupo e marque uma ou mais tags; também é possível
+criar tags dentro do formulário. Clique no nome ou no lápis de um dispositivo
+para movê-lo de grupo ou alterar suas tags.
+
+Os grupos expandem para mostrar os dispositivos, com busca, filtro por tag e
+paginação independente. Excluir um grupo mantém seus dispositivos em **Ungrouped**;
+excluir uma tag mantém os dispositivos. **User groups** continuam separados para
+controle de acesso. Veja o [guia de grupos e tags](docs/GRUPOS-E-TAGS.md).
 
 ## Primeiro acesso
 
@@ -67,6 +79,7 @@ RUSTBOOK cuida da agenda; `hbbs`/`hbbr` cuidam das conexões remotas.
 - [Desenvolvimento e contribuição](CONTRIBUTING.md)
 - [Histórico de alterações](CHANGELOG.md)
 
-A criação de compartilhamentos e a edição de membros de grupos ainda não estão
-completas no painel. O inventário do cliente é básico; grupos e permissões por
-dispositivo continuam pendentes. Consulte os limites no guia de compatibilidade.
+A criação de compartilhamentos e a edição de membros dos grupos de usuários
+ainda não estão completas no painel. As pastas de dispositivos são organização
+da agenda, sem conceder permissões adicionais. Grupos e ACLs do inventário nativo
+continuam pendentes. Consulte os limites no guia de compatibilidade.

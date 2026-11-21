@@ -9,6 +9,32 @@ export interface Peer {
   alias: string
   tags: string[]
   note: string
+  group_id?: number | null
+  online?: boolean
+}
+
+export interface PeerGroup {
+  id: number
+  name: string
+  note: string
+  peer_count: number
+}
+
+export interface GroupOverview {
+  data: PeerGroup[]
+  total: number
+  ungrouped_count: number
+}
+
+export interface PeerForm {
+  id: string
+  alias: string
+  hostname: string
+  username: string
+  platform: string
+  note: string
+  tags: string[]
+  group_id: number | null
 }
 
 export interface Tag {
@@ -38,16 +64,37 @@ export function getPersonalAb(): Promise<{ data: AbProfile }> {
   return api('/api/ab/personal')
 }
 
-export function getPeers(guid: string, page = 1, pageSize = 100, q = '', tag = '', signal?: AbortSignal): Promise<PeersResponse> {
+export function getPeers(guid: string, page = 1, pageSize = 100, q = '', tag = '', signal?: AbortSignal, group = ''): Promise<PeersResponse> {
   const params = new URLSearchParams({ ab: guid, current: String(page), pageSize: String(pageSize), q, tag })
+  if (group) params.set('group', group)
   return api(`/api/ab/peers?${params}`, { signal })
 }
 
 export function addPeer(guid: string, peer: Partial<Peer>): Promise<void> {
   return api(`/api/ab/peer/add/${guid}`, {
     method: 'POST',
-    body: JSON.stringify(peer),
+    body: JSON.stringify({ ...peer, fail_if_exists: true }),
   })
+}
+
+export function updatePeer(guid: string, peer: Partial<Peer>): Promise<void> {
+  return api(`/api/ab/peer/update/${guid}`, { method: 'PUT', body: JSON.stringify(peer) })
+}
+
+export function getPeerGroups(guid: string, q = '', tag = '', signal?: AbortSignal): Promise<GroupOverview> {
+  return api(`/api/ab/peer-groups/${guid}?${new URLSearchParams({ q, tag })}`, { signal })
+}
+
+export function createPeerGroup(guid: string, group: { name: string; note: string }): Promise<{ id: number }> {
+  return api(`/api/ab/peer-groups/${guid}`, { method: 'POST', body: JSON.stringify(group) })
+}
+
+export function updatePeerGroup(guid: string, id: number, group: { name: string; note: string }): Promise<void> {
+  return api(`/api/ab/peer-groups/${guid}/${id}`, { method: 'PUT', body: JSON.stringify(group) })
+}
+
+export function deletePeerGroup(guid: string, id: number): Promise<void> {
+  return api(`/api/ab/peer-groups/${guid}/${id}`, { method: 'DELETE' })
 }
 
 export function deletePeer(guid: string, ids: string[]): Promise<void> {

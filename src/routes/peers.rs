@@ -34,6 +34,8 @@ struct PeersQuery {
     q: String,
     #[serde(default)]
     tag: String,
+    #[serde(default)]
+    group: String,
 }
 
 pub async fn peer_tags(
@@ -57,6 +59,24 @@ pub async fn peer_tags(
     Ok(tags)
 }
 
+fn append_filters(sql: &mut sqlx::QueryBuilder<sqlx::Sqlite>, guid: &str, query: &PeersQuery) {
+    sql.push(" FROM peers p WHERE ab_guid = ")
+        .push_bind(guid.to_string());
+    if !query.q.trim().is_empty() {
+        sql.push(" AND instr(lower(rustdesk_id || ' ' || alias || ' ' || hostname || ' ' || username), lower(")
+            .push_bind(query.q.trim().to_string()).push(")) > 0");
+    }
+    if !query.tag.is_empty() {
+        sql.push(" AND EXISTS(SELECT 1 FROM peer_tags pt JOIN tags t ON t.id = pt.tag_id WHERE pt.peer_id = p.id AND t.name = ")
+            .push_bind(query.tag.clone()).push(")");
+    }
+    if query.group == "ungrouped" {
+        sql.push(" AND group_id IS NULL");
+    } else if let Ok(id) = query.group.parse::<i64>() {
+        sql.push(" AND group_id = ").push_bind(id);
+    }
+}
+
 async fn get_peers(
     State(state): State<AppState>,
     AuthUser(claims): AuthUser,
@@ -70,42 +90,59 @@ async fn get_peers(
     if query.q.len() > 128 || query.tag.len() > 128 {
         return Err(ApiError::BadRequest("Filter is too long".into()));
     }
+    if !query.group.is_empty()
+        && query.group != "ungrouped"
+        && query
+            .group
+            .parse::<i64>()
+            .ok()
+            .filter(|id| *id > 0)
+            .is_none()
+    {
+        return Err(ApiError::BadRequest("Invalid device group filter".into()));
+    }
     let guid = resolve_book(&state.db, claims.user_id, &query.ab, Access::Read).await?;
-    let filter = " FROM peers p WHERE ab_guid = ?
-        AND (? = '' OR instr(lower(rustdesk_id || ' ' || alias || ' ' || hostname || ' ' || username), lower(?)) > 0)
-        AND (? = '' OR EXISTS(SELECT 1 FROM peer_tags pt JOIN tags t ON t.id = pt.tag_id WHERE pt.peer_id = p.id AND t.name = ?))";
     let mut rows_query = sqlx::QueryBuilder::<sqlx::Sqlite>::new("SELECT p.*");
+    append_filters(&mut rows_query, &guid, &query);
     rows_query
-        .push(filter)
-        .push(" ORDER BY rustdesk_id LIMIT ? OFFSET ?");
+        .push(" ORDER BY rustdesk_id LIMIT ")
+        .push_bind(query.page_size)
+        .push(" OFFSET ")
+        .push_bind(offset);
     let peers = rows_query
         .build_query_as::<Peer>()
-        .bind(&guid)
-        .bind(query.q.trim())
-        .bind(query.q.trim())
-        .bind(&query.tag)
-        .bind(&query.tag)
-        .bind(query.page_size)
-        .bind(offset)
         .fetch_all(&state.db)
         .await?;
     let mut count_query = sqlx::QueryBuilder::<sqlx::Sqlite>::new("SELECT COUNT(*)");
-    count_query.push(filter);
+    append_filters(&mut count_query, &guid, &query);
     let total: i64 = count_query
         .build_query_scalar()
-        .bind(&guid)
-        .bind(query.q.trim())
-        .bind(query.q.trim())
-        .bind(&query.tag)
-        .bind(&query.tag)
         .fetch_one(&state.db)
         .await?;
     let mut tags = peer_tags(&state.db, &peers).await?;
+    // Inventory reports remain admin-only. A saved arbitrary ID is not a device ACL.
+    let mut statuses = HashMap::new();
+    if claims.is_admin {
+        for chunk in peers.chunks(500) {
+            let mut sql = sqlx::QueryBuilder::<sqlx::Sqlite>::new(
+                "SELECT rustdesk_id, unixepoch(last_online) BETWEEN unixepoch() - 120 AND unixepoch() FROM devices WHERE rustdesk_id IN (");
+            let mut ids = sql.separated(", ");
+            for peer in chunk {
+                ids.push_bind(&peer.rustdesk_id);
+            }
+            ids.push_unseparated(")");
+            let rows: Vec<(String, Option<bool>)> =
+                sql.build_query_as().fetch_all(&state.db).await?;
+            statuses.extend(rows);
+        }
+    }
     Ok(Json(PeersResponse {
         data: peers
             .into_iter()
             .map(|peer| PeerPayload {
                 tags: tags.remove(&peer.id).unwrap_or_default(),
+                group_id: peer.group_id,
+                online: statuses.remove(&peer.rustdesk_id).flatten(),
                 id: peer.rustdesk_id,
                 hash: peer.hash,
                 username: peer.username,
@@ -117,6 +154,28 @@ async fn get_peers(
             .collect(),
         total,
     }))
+}
+
+async fn validate_group(
+    tx: &mut sqlx::SqliteConnection,
+    guid: &str,
+    group: Option<i64>,
+) -> Result<(), ApiError> {
+    if let Some(id) = group {
+        let exists: bool = sqlx::query_scalar(
+            "SELECT EXISTS(SELECT 1 FROM peer_groups WHERE id = ? AND ab_guid = ?)",
+        )
+        .bind(id)
+        .bind(guid)
+        .fetch_one(tx)
+        .await?;
+        if !exists {
+            return Err(ApiError::BadRequest(
+                "Device group does not belong to this address book".into(),
+            ));
+        }
+    }
+    Ok(())
 }
 
 fn validate_id(id: &str) -> Result<(), ApiError> {
@@ -167,13 +226,15 @@ async fn add_peer(
     validate_id(&req.id)?;
     let guid = resolve_book(&state.db, claims.user_id, &guid, Access::Write).await?;
     let mut tx = state.db.begin().await?;
-    let peer_id: i64 = sqlx::query_scalar(
-        "INSERT INTO peers (ab_guid, rustdesk_id, hash, username, hostname, platform, alias, note)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+    validate_group(&mut tx, &guid, req.group_id.flatten()).await?;
+    let peer_id: Option<i64> = sqlx::query_scalar(
+        "INSERT INTO peers (ab_guid, rustdesk_id, hash, username, hostname, platform, alias, note, group_id)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
          ON CONFLICT(ab_guid, rustdesk_id) DO UPDATE SET
          hash = excluded.hash, username = excluded.username, hostname = excluded.hostname,
          platform = excluded.platform, alias = excluded.alias, note = excluded.note,
-         updated_at = CURRENT_TIMESTAMP RETURNING id",
+         group_id = CASE WHEN ? THEN excluded.group_id ELSE peers.group_id END,
+         updated_at = CURRENT_TIMESTAMP WHERE ? = FALSE RETURNING id",
     )
     .bind(&guid)
     .bind(&req.id)
@@ -183,8 +244,10 @@ async fn add_peer(
     .bind(req.platform)
     .bind(req.alias)
     .bind(req.note)
-    .fetch_one(&mut *tx)
+    .bind(req.group_id.flatten()).bind(req.group_id.is_some()).bind(req.fail_if_exists)
+    .fetch_optional(&mut *tx)
     .await?;
+    let peer_id = peer_id.ok_or_else(|| ApiError::Conflict("This RustDesk ID is already saved; edit the existing device to move it or change its tags".into()))?;
     if let Some(tags) = req.tags {
         replace_tags(&mut tx, &guid, peer_id, &tags).await?;
     }
@@ -209,12 +272,14 @@ async fn update_peer(
     validate_id(&req.id)?;
     let guid = resolve_book(&state.db, claims.user_id, &guid, Access::Write).await?;
     let mut tx = state.db.begin().await?;
+    validate_group(&mut tx, &guid, req.group_id.flatten()).await?;
     let peer_id: Option<i64> = sqlx::query_scalar(
         "UPDATE peers SET hash = COALESCE(?, hash), username = COALESCE(?, username),
          hostname = COALESCE(?, hostname), platform = COALESCE(?, platform), alias = COALESCE(?, alias),
-         note = COALESCE(?, note), updated_at = CURRENT_TIMESTAMP
+         note = COALESCE(?, note), group_id = CASE WHEN ? THEN ? ELSE group_id END, updated_at = CURRENT_TIMESTAMP
          WHERE ab_guid = ? AND rustdesk_id = ? RETURNING id")
         .bind(req.hash).bind(req.username).bind(req.hostname).bind(req.platform).bind(req.alias).bind(req.note)
+        .bind(req.group_id.is_some()).bind(req.group_id.flatten())
         .bind(&guid).bind(req.id).fetch_optional(&mut *tx).await?;
     let peer_id = peer_id.ok_or_else(|| ApiError::NotFound("Peer not found".into()))?;
     if let Some(tags) = req.tags {

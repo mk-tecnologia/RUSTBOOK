@@ -4,26 +4,33 @@ import * as abApi from '../api/addressBook'
 
 export const useAddressBookStore = defineStore('addressBook', () => {
   const abGuid = ref('')
-  const peers = ref<abApi.Peer[]>([])
+  const groups = ref<abApi.PeerGroup[]>([])
   const tags = ref<abApi.Tag[]>([])
   const totalPeers = ref(0)
+  const ungroupedCount = ref(0)
   const selectedTag = ref<string | null>(null)
   const query = ref('')
-  const page = ref(1)
-  const pageSize = 24
+  const refreshKey = ref(0)
   const loading = ref(false)
   const error = ref('')
+  const overviewReady = ref(false)
   let activeRequest: AbortController | undefined
+  let generation = 0
 
   async function init() {
+    const current = generation
     error.value = ''
+    loading.value = true
     try {
       const res = await abApi.getPersonalAb()
+      if (generation !== current) return
       abGuid.value = res.data.guid
-      await Promise.all([loadPeers(), loadTags()])
-    } catch (e) { error.value = e instanceof Error ? e.message : 'Unable to load address book' }
+      await Promise.all([loadOverview(), loadTags()])
+    } catch (e) {
+      if (generation === current) error.value = e instanceof Error ? e.message : 'Unable to load address book'
+    } finally { if (generation === current && !activeRequest) loading.value = false }
   }
-  async function loadPeers() {
+  async function loadOverview() {
     if (!abGuid.value) return
     activeRequest?.abort()
     const request = new AbortController()
@@ -31,37 +38,51 @@ export const useAddressBookStore = defineStore('addressBook', () => {
     loading.value = true
     error.value = ''
     try {
-      const res = await abApi.getPeers(abGuid.value, page.value, pageSize, query.value, selectedTag.value || '', request.signal)
+      const res = await abApi.getPeerGroups(abGuid.value, query.value, selectedTag.value || '', request.signal)
       if (request.signal.aborted) return
-      peers.value = res.data
+      groups.value = res.data
       totalPeers.value = res.total
-      const lastPage = Math.max(1, Math.ceil(res.total / pageSize))
-      if (page.value > lastPage) { page.value = lastPage; await loadPeers() }
+      ungroupedCount.value = res.ungrouped_count
+      overviewReady.value = true
     } catch (e) {
       if (!request.signal.aborted) error.value = e instanceof Error ? e.message : 'Unable to load devices'
-    } finally { if (activeRequest === request) loading.value = false }
+    } finally {
+      if (activeRequest === request) { loading.value = false; activeRequest = undefined }
+    }
   }
   async function loadTags() {
-    const res = await abApi.getTags(abGuid.value)
-    tags.value = res.data
+    const guid = abGuid.value
+    const current = generation
+    const res = await abApi.getTags(guid)
+    if (guid === abGuid.value && current === generation) tags.value = res.data
   }
-  async function setPage(next: number) { page.value = next; await loadPeers() }
   async function setFilters(q: string, tag: string | null) {
-    query.value = q; selectedTag.value = tag; page.value = 1; await loadPeers()
+    query.value = q; selectedTag.value = tag
+    await loadOverview()
   }
-  async function addPeer(peer: Partial<abApi.Peer>) { await abApi.addPeer(abGuid.value, peer); await loadPeers() }
-  async function removePeer(ids: string[]) { await abApi.deletePeer(abGuid.value, ids); await loadPeers() }
+  async function refresh() { refreshKey.value++; await loadOverview() }
+  async function addPeer(peer: abApi.PeerForm) { await abApi.addPeer(abGuid.value, peer); await refresh() }
+  async function updatePeer(peer: abApi.PeerForm) { await abApi.updatePeer(abGuid.value, peer); await refresh() }
+  async function removePeer(ids: string[]) { await abApi.deletePeer(abGuid.value, ids); await refresh() }
   async function addTag(name: string, color: number) { await abApi.addTag(abGuid.value, name, color); await loadTags() }
   async function removeTag(names: string[]) {
     await abApi.deleteTag(abGuid.value, names)
     if (names.includes(selectedTag.value || '')) selectedTag.value = null
-    await Promise.all([loadTags(), loadPeers()])
+    await Promise.all([loadTags(), refresh()])
   }
+  async function saveGroup(group: { id?: number; name: string; note: string }) {
+    if (group.id !== undefined) await abApi.updatePeerGroup(abGuid.value, group.id, group)
+    else await abApi.createPeerGroup(abGuid.value, group)
+    await refresh()
+  }
+  async function removeGroup(id: number) { await abApi.deletePeerGroup(abGuid.value, id); await refresh() }
   function reset() {
-    activeRequest?.abort(); abGuid.value = ''; peers.value = []; tags.value = []
-    totalPeers.value = 0; selectedTag.value = null; query.value = ''; page.value = 1
-    error.value = ''; loading.value = false
+    generation++; activeRequest?.abort(); activeRequest = undefined
+    abGuid.value = ''; groups.value = []; tags.value = []; totalPeers.value = 0; ungroupedCount.value = 0
+    selectedTag.value = null; query.value = ''; error.value = ''; loading.value = false; refreshKey.value++
+    overviewReady.value = false
   }
-  return { abGuid, peers, tags, totalPeers, selectedTag, query, page, pageSize, loading, error,
-    init, loadPeers, loadTags, setPage, setFilters, addPeer, removePeer, addTag, removeTag, reset }
+  return { abGuid, groups, tags, totalPeers, ungroupedCount, selectedTag, query, refreshKey, loading, error, overviewReady,
+    init, loadOverview, loadTags, setFilters, refresh, addPeer, updatePeer, removePeer, addTag,
+    removeTag, saveGroup, removeGroup, reset }
 })

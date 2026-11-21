@@ -148,6 +148,17 @@ async fn update_ab_legacy(
         serde_json::from_str(&ab_data.tag_colors).unwrap_or_default();
 
     let mut tx = state.db.begin().await?;
+    // Legacy clients replace peer rows without knowing console device groups.
+    // Restore each retained RustDesk ID's folder after replacement.
+    let saved_groups: Vec<(String, Option<i64>, String)> =
+        sqlx::query_as("SELECT rustdesk_id, group_id, note FROM peers WHERE ab_guid = ?")
+            .bind(&guid)
+            .fetch_all(&mut *tx)
+            .await?;
+    let saved_groups: std::collections::HashMap<String, (Option<i64>, String)> = saved_groups
+        .into_iter()
+        .map(|(id, group, note)| (id, (group, note)))
+        .collect();
     // Delete existing data and replace atomically
     // Delete peer_tags first (foreign key), then peers, then tags
     sqlx::query("DELETE FROM peer_tags WHERE peer_id IN (SELECT id FROM peers WHERE ab_guid = ?)")
@@ -177,7 +188,7 @@ async fn update_ab_legacy(
     // Insert peers and their tag associations
     for peer in &ab_data.peers {
         let result = sqlx::query(
-            "INSERT INTO peers (ab_guid, rustdesk_id, hash, username, hostname, platform, alias) VALUES (?, ?, ?, ?, ?, ?, ?)",
+            "INSERT INTO peers (ab_guid, rustdesk_id, hash, username, hostname, platform, alias, group_id, note) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
         )
         .bind(&guid)
         .bind(&peer.id)
@@ -186,6 +197,8 @@ async fn update_ab_legacy(
         .bind(&peer.hostname)
         .bind(&peer.platform)
         .bind(&peer.alias)
+        .bind(saved_groups.get(&peer.id).and_then(|(group, _)| *group))
+        .bind(saved_groups.get(&peer.id).map(|(_, note)| note.as_str()).unwrap_or(""))
         .execute(&mut *tx)
         .await?;
 

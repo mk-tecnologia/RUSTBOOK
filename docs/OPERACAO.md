@@ -5,6 +5,14 @@ O instalador faz backup offline e tenta restaurar a imagem e o banco anteriores
 em falha. Os procedimentos abaixo também orientam implantações manuais e a
 recuperação quando a restauração automática não puder ser concluída.
 
+## Atualização para 0.4.0
+
+A migração `009_peer_groups.sql` é aditiva: peers existentes ficam sem pasta;
+tags e grupos administrativos de usuários são preservados. Pastas e tags passam
+a ser editáveis na página Devices. Consulte [grupos e tags](GRUPOS-E-TAGS.md).
+Para voltar à imagem 0.3.0, restaure também o backup anterior à migração, com a
+agenda parada. Não edite nem remova uma migração já registrada.
+
 ## Antes de atualizar uma instalação existente
 
 1. Pare o serviço da agenda e faça backup do banco e dos arquivos WAL/SHM que
