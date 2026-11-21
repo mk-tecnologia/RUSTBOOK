@@ -105,10 +105,10 @@ onMounted(loadUsers)
               </span>
             </td>
             <td class="px-6 py-3">
-              <div class="flex justify-end gap-2 whitespace-nowrap">
-                <button :disabled="pending" type="button" :aria-label="`Edit user ${user.username}`" @click="openEditor(user)" class="ui-button inline-flex items-center gap-1.5"><svg aria-hidden="true" class="size-4" fill="none" stroke="currentColor" stroke-width="1.6" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="m16 4 4 4M4 20l4-1L20 7a2.8 2.8 0 0 0-4-4L4 15l-1 6Z" /></svg>Edit</button>
-                <button :disabled="pending" type="button" :aria-label="`${user.status === 1 ? 'Disable' : 'Enable'} user ${user.username}`" @click="toggleStatus(user)" class="ui-button inline-flex items-center gap-1.5"><svg aria-hidden="true" class="size-4" fill="none" stroke="currentColor" stroke-width="1.6" viewBox="0 0 24 24"><path stroke-linecap="round" d="M12 3v9m-5-7a8 8 0 1 0 10 0" /></svg>{{ user.status === 1 ? 'Disable' : 'Enable' }}</button>
-                <button :disabled="pending" type="button" :aria-label="`Delete user ${user.username}`" @click="handleDelete(user.id, user.username)" class="ui-button inline-flex items-center gap-1.5 text-red-600 dark:text-red-400"><svg aria-hidden="true" class="size-4" fill="none" stroke="currentColor" stroke-width="1.6" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M4 7h16M9 7V4h6v3m-9 0 1 13h10l1-13M10 11v5m4-5v5" /></svg>Delete</button>
+              <div class="flex justify-end gap-1 whitespace-nowrap">
+                <button :disabled="pending" type="button" :aria-label="`Edit user ${user.username}`" title="Edit user" @click="openEditor(user)" class="user-action text-blue-600 hover:bg-blue-50 dark:text-blue-400 dark:hover:bg-blue-500/10"><svg aria-hidden="true" class="size-4" fill="none" stroke="currentColor" stroke-width="1.6" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="m16 4 4 4M4 20l4-1L20 7a2.8 2.8 0 0 0-4-4L4 15l-1 6Z" /></svg></button>
+                <button :disabled="pending" type="button" :aria-label="`${user.status === 1 ? 'Disable' : 'Enable'} user ${user.username}`" :title="user.status === 1 ? 'Disable user' : 'Enable user'" @click="toggleStatus(user)" class="user-action" :class="user.status === 1 ? 'text-amber-600 hover:bg-amber-50 dark:text-amber-400 dark:hover:bg-amber-500/10' : 'text-emerald-600 hover:bg-emerald-50 dark:text-emerald-400 dark:hover:bg-emerald-500/10'"><svg aria-hidden="true" class="size-4" fill="none" stroke="currentColor" stroke-width="1.6" viewBox="0 0 24 24"><path stroke-linecap="round" d="M12 3v9m-5-7a8 8 0 1 0 10 0" /></svg></button>
+                <button :disabled="pending" type="button" :aria-label="`Delete user ${user.username}`" title="Delete user" @click="handleDelete(user.id, user.username)" class="user-action text-red-600 hover:bg-red-50 dark:text-red-400 dark:hover:bg-red-500/10"><svg aria-hidden="true" class="size-4" fill="none" stroke="currentColor" stroke-width="1.6" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M4 7h16M9 7V4h6v3m-9 0 1 13h10l1-13M10 11v5m4-5v5" /></svg></button>
               </div>
             </td>
           </tr>
@@ -120,3 +120,10 @@ onMounted(loadUsers)
     </div>
   </div>
 </template>
+
+<style scoped>
+@reference "../style.css";
+.user-action {
+  @apply inline-flex size-9 shrink-0 items-center justify-center rounded-lg transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-current disabled:cursor-not-allowed disabled:opacity-40 motion-reduce:transition-none;
+}
+</style>

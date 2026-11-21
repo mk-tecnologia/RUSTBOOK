@@ -5,6 +5,12 @@ manifesto upstream é `0.1.0`; não são inventadas releases anteriores do upstr
 
 ## [Unreleased]
 
+Sem alterações pendentes.
+
+## [0.5.2] - 2026-11-21
+
+- Ações de usuários compactas, apenas com ícones: editar azul, desativar âmbar,
+  ativar verde e excluir vermelho, com tooltips, foco visível e rótulos acessíveis.
 - Instalador escolhe a build pela data de publicação, sem depender da ordem
   da lista de releases retornada pelo GitHub.
 
