@@ -1671,3 +1671,78 @@ async fn presence_settings_are_admin_only_tested_persistent_and_used_by_peers() 
     assert_eq!(reset["server"], "");
     server.abort();
 }
+
+#[tokio::test]
+async fn native_connection_settings_require_admin_and_preserve_public_key() {
+    let f = Fixture::new().await;
+    let path = "/api/admin/connection-settings";
+    let key = "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=";
+    assert_eq!(
+        f.call("GET", "/api/connection-settings", "", Value::Null)
+            .await
+            .0,
+        StatusCode::UNAUTHORIZED
+    );
+    assert_eq!(
+        f.call(
+            "PUT",
+            path,
+            &f.member,
+            json!({"server":"hbbs:21116","public_key":key})
+        )
+        .await
+        .0,
+        StatusCode::FORBIDDEN
+    );
+    assert_eq!(
+        f.call("GET", "/api/connection-settings", &f.admin, Value::Null)
+            .await
+            .1["server"],
+        ""
+    );
+    let (status, saved) = f
+        .call(
+            "PUT",
+            path,
+            &f.admin,
+            json!({"server":"hbbs:21116","public_key":key}),
+        )
+        .await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(saved["public_key"], key);
+    let (_, read) = f
+        .call("GET", "/api/connection-settings", &f.member, Value::Null)
+        .await;
+    assert_eq!(read["server"], "hbbs:21116");
+    assert_eq!(read["public_key"], key);
+    assert_eq!(read["can_edit"], false);
+    for body in [
+        json!({"server":"https://hbbs:21116","public_key":key}),
+        json!({"server":"hbbs:21116","public_key":"invalid"}),
+        json!({"server":"","public_key":key}),
+        json!({"server":"hbbs:0","public_key":key}),
+    ] {
+        assert_eq!(
+            f.call("PUT", path, &f.admin, body).await.0,
+            StatusCode::BAD_REQUEST
+        );
+    }
+    assert_eq!(
+        f.call("GET", "/api/connection-settings", &f.admin, Value::Null)
+            .await
+            .1["server"],
+        "hbbs:21116"
+    );
+    assert_eq!(
+        f.call("PUT", path, &f.admin, json!({"server":"","public_key":""}))
+            .await
+            .0,
+        StatusCode::OK
+    );
+    assert_eq!(
+        f.call("GET", "/api/connection-settings", &f.admin, Value::Null)
+            .await
+            .1["public_key"],
+        ""
+    );
+}

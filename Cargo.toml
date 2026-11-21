@@ -1,6 +1,6 @@
 [package]
 name = "rustdesk-address-book"
-version = "0.6.0"
+version = "0.6.1"
 edition = "2021"
 description = "Open-source address book server for RustDesk OSS"
 license = "AGPL-3.0"
@@ -23,3 +23,4 @@ toml = "0.8"
 rand = "0.8.8"
 mime_guess = "2"
 prost = "0.14"
+base64 = "0.22"

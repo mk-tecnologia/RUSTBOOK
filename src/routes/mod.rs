@@ -1,6 +1,7 @@
 pub mod ab;
 pub mod audit;
 pub mod auth;
+pub mod connection_settings;
 pub mod devices;
 pub mod frontend;
 pub mod groups;
@@ -19,6 +20,7 @@ pub fn api_router() -> Router<AppState> {
         .merge(auth::routes())
         .merge(audit::routes())
         .merge(devices::routes())
+        .merge(connection_settings::routes())
         .merge(ab::routes())
         .merge(peers::routes())
         .merge(presence_settings::routes())

@@ -7,6 +7,16 @@ manifesto upstream é `0.1.0`; não são inventadas releases anteriores do upstr
 
 Sem alterações pendentes.
 
+## [0.6.1] - 2026-11-21
+
+- Configuração por instalação do servidor de ID e da chave pública para conexões
+  nativas explícitas pelo painel, compatíveis com hbbs OSS e cliente autenticado.
+- Links incluem o servidor e sua chave pública; não incluem senhas nem tokens de conta.
+- Configuração salva no banco, alterável somente por administradores e consultável
+  por usuários autenticados. Valores incompletos ou inválidos não substituem os anteriores.
+- Documentação da limitação do cliente RustDesk 1.5.3 com token de agenda no hbbs OSS.
+  A atualização da agenda não modifica o fluxo de conexão por ID simples do cliente.
+
 ## [0.6.0] - 2026-11-21
 
 - Ação de conexão por dispositivo na agenda web, abrindo o cliente instalado via

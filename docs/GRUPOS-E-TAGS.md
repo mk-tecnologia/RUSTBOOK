@@ -69,5 +69,28 @@ pelo protocolo `rustdesk://connect/ID`. O cliente usa os servidores já configur
 e solicita a senha remota ou a aprovação de acesso conforme a configuração do peer.
 A conexão acontece no aplicativo nativo. É necessário ter RustDesk instalado e
 associado ao protocolo; o navegador pode pedir confirmação para abri-lo.
-O link não carrega senha, chave nem token da agenda. Presença desconhecida/offline
+O link não carrega senha nem token da agenda. Quando configurada, inclui a chave pública do servidor. Presença desconhecida/offline
 não bloqueia a tentativa de conexão. Para editar o dispositivo, use o lápis.
+
+### Conexões com hbbs OSS e conta nativa logada (0.6.1+)
+
+Como administrador, abra **Devices → Connection settings** e informe:
+
+- **ID server · TCP endpoint:** endereço do hbbs acessível pelos computadores dos
+  operadores, com a porta de ID (normalmente `rustdesk.example.com:21116`). Esse
+  endereço pode ser diferente do endereço interno usado para consultar presença.
+- **Public Key:** a chave pública do hbbs já configurada no campo Key dos clientes.
+  Não informe a chave privada, a senha do computador nem o token da conta.
+
+Salve. Os ícones de conexão passam a gerar links no formato
+`rustdesk://connect/ID@servidor:porta?key=CHAVE_PUBLICA`, sem IP fixo no código.
+O cliente usa a conexão explícita a esse servidor, preservando sua chave pública
+sem encaminhar o token da conta da agenda ao hbbs OSS. A senha remota ou a aprovação
+continua necessária. A configuração fica no banco e é preservada nas atualizações.
+Limpar os dois campos restaura os links simples que usam o padrão do cliente.
+
+Essa correção aplica-se aos atalhos do painel. Para conexões iniciadas pelo ID
+simples no aplicativo RustDesk 1.5.3 com hbbs OSS, sair da conta em
+**Configurações → Conta → Logout** evita o fluxo de handshake com o token da agenda.
+Outra opção no cliente é informar `ID@servidor:porta?key=CHAVE_PUBLICA` no campo de
+conexão. Não remova a Key para contornar o erro e não altere a senha do peer.

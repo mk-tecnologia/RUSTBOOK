@@ -12,3 +12,17 @@ test('invalid IDs cannot inject a protocol, query, path or command option', () =
     assert.equal(rustdeskLink(id), null, id)
   }
 })
+
+
+test('explicit hbbs links preserve the public key without account credentials', () => {
+  const public_key = '//////////////////////////////////////////8='
+  const link = rustdeskLink('295214626', { server: 'rustdesk.example.com:21116', public_key })!
+  const parsed = new URL(link)
+  assert.equal(parsed.pathname, '/295214626@rustdesk.example.com:21116')
+  assert.equal(parsed.searchParams.get('key'), public_key)
+  assert.deepEqual([...parsed.searchParams.keys()], ['key'])
+  for (const server of ['user@host:21116', 'host:21116/path', 'host:21116?password=x', 'https://host:21116']) {
+    assert.equal(rustdeskLink('123', { server, public_key }), null)
+  }
+  assert.equal(rustdeskLink('123', { server: 'host:21116', public_key: '' }), null)
+})

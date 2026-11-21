@@ -182,3 +182,22 @@ perfil não revoga sessões por enviar um status inalterado.
 
 A presença da agenda web usa [consulta ao hbbs](PRESENCA.md). O status do
 inventário nativo `/api/peers` mantém o contrato de relatos descrito acima.
+
+## Conta nativa e conexão TCP com hbbs OSS
+
+No RustDesk 1.5.3, uma conexão pelo ID simples com Key e token de conta presentes
+usa `secure_tcp` antes do pedido de conexão. O hbbs OSS que aguarda primeiro uma
+mensagem do cliente não inicia esse handshake, produzindo timeout. Autenticar na
+API da agenda não torna o hbbs um servidor com suporte ao token da conta.
+
+O caminho de servidor explícito no cliente usa o servidor/Key informados e deixa
+vazio o token de conta nessa conexão. A configuração **Connection settings** do
+painel usa esse caminho sem alterar a autenticação da agenda. Isso não modifica
+os binários hbbs/hbbr nem o aplicativo RustDesk instalado.
+
+Para usar o ID simples no aplicativo com esse hbbs, saia da conta nativa em
+**Configurações → Conta → Logout**, mantendo ID server, relay e Key. O painel web
+pode continuar autenticado. Sessões já abertas devem ser fechadas individualmente
+no cliente; a agenda não as encerra.
+
+Referência: [RustDesk 1.5.3: escolha do servidor/token e handshake](https://github.com/rustdesk/rustdesk/blob/1.5.3/src/client.rs#L469).

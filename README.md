@@ -23,7 +23,7 @@ Se estiver usando uma conta comum, entre como root com `su -` antes de executar.
 **O mesmo comando instala e atualiza.** Ele baixa a imagem pronta mais recente
 publicada pela CI para **amd64 ou arm64**, verifica sua integridade e aplica a
 atualização. **Não compila no servidor.** Se o mesmo commit já estiver em execução
-e saudável, termina sem baixar a imagem ou reiniciar. Versão atual: **[0.6.0](https://github.com/mk-tecnologia/RUSTBOOK/releases/tag/v0.6.0)**.
+e saudável, termina sem baixar a imagem ou reiniciar. Versão atual: **[0.6.1](https://github.com/mk-tecnologia/RUSTBOOK/releases/tag/v0.6.1)**.
 
 Para configurar Online/Offline pelo servidor de ID, veja [Presença dos dispositivos](docs/PRESENCA.md). Relatórios antigos da API não significam que o peer está offline.
 

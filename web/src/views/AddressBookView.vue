@@ -6,11 +6,14 @@ import PeerGroupSection from '../components/peers/PeerGroupSection.vue'
 import TagPanel from '../components/tags/TagPanel.vue'
 import AddPeerDialog from '../components/peers/AddPeerDialog.vue'
 import OrganizationDialog from '../components/peers/OrganizationDialog.vue'
+import ConnectionSettings from '../components/peers/ConnectionSettings.vue'
+import type { NativeConnection } from '../utils/connection'
 import PresenceSettings from '../components/peers/PresenceSettings.vue'
 import ErrorNotice from '../components/ui/ErrorNotice.vue'
 
 const store = useAddressBookStore()
 const search = ref(store.query)
+const connection = ref<NativeConnection>()
 const saving = ref(false)
 const actionError = ref('')
 const peerEditor = ref<{ peer?: Peer; groupId: number | null } | null>(null)
@@ -78,6 +81,7 @@ async function clearFilters() { search.value = ''; clearTimeout(timer); await st
       </div>
     </div>
     <PresenceSettings @changed="store.refresh" />
+    <ConnectionSettings @changed="connection = $event" />
     <ErrorNotice :message="actionError" />
     <ErrorNotice :message="store.error" retry @retry="store.init" />
     <div class="flex flex-col gap-5 lg:flex-row">
@@ -90,8 +94,8 @@ async function clearFilters() { search.value = ''; clearTimeout(timer); await st
         <div v-if="store.overviewReady && !store.error" class="overflow-hidden rounded-xl border border-gray-200 bg-white dark:border-rd-border dark:bg-rd-card">
           <div v-if="!store.totalPeers && !visibleGroups.length" class="flex flex-col items-center px-6 py-14 text-center"><span class="mb-4 flex size-12 items-center justify-center rounded-2xl bg-rd-primary/5 text-rd-primary"><svg aria-hidden="true" class="size-6" fill="none" stroke="currentColor" stroke-width="1.4" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M4 4h16v12H4zM8 20h8m-4-4v4" /></svg></span><h2 class="text-sm font-semibold">{{ filtered ? 'No matching devices' : 'Your devices, organized' }}</h2><p class="mt-2 max-w-sm text-sm leading-relaxed text-gray-500 dark:text-rd-text-secondary">{{ filtered ? 'Try a different search or clear the tag filter.' : 'Create groups for your customers or sites, then add devices and assign tags.' }}</p><button type="button" :disabled="saving" class="mt-5 text-sm font-medium text-rd-primary" @click="filtered ? clearFilters() : addPeer()">{{ filtered ? 'Clear filters' : 'Add your first device' }}</button></div>
           <div class="divide-y divide-gray-200 dark:divide-rd-border">
-            <PeerGroupSection v-if="store.ungroupedCount > 0 || (!filtered && store.groups.length > 0)" :key="`${store.abGuid}:ungrouped`" :guid="store.abGuid" :group="null" :count="store.ungroupedCount" :tags="store.tags" :query="store.query" :selected-tag="store.selectedTag" :refresh-key="store.refreshKey" :initial-open="store.ungroupedCount > 0" :busy="saving" @add="addPeer" @edit="editPeer" @remove="removePeer" />
-            <PeerGroupSection v-for="group in visibleGroups" :key="`${store.abGuid}:${group.id}`" :guid="store.abGuid" :group="group" :count="group.peer_count" :tags="store.tags" :query="store.query" :selected-tag="store.selectedTag" :refresh-key="store.refreshKey" :initial-open="store.ungroupedCount === 0 && group.id === firstGroupId" :busy="saving" @add="addPeer" @edit="editPeer" @remove="removePeer" @edit-group="editOrganization('group', $event)" @remove-group="removeGroup" />
+            <PeerGroupSection v-if="store.ungroupedCount > 0 || (!filtered && store.groups.length > 0)" :key="`${store.abGuid}:ungrouped`" :guid="store.abGuid" :group="null" :count="store.ungroupedCount" :tags="store.tags" :query="store.query" :selected-tag="store.selectedTag" :connection="connection" :refresh-key="store.refreshKey" :initial-open="store.ungroupedCount > 0" :busy="saving" @add="addPeer" @edit="editPeer" @remove="removePeer" />
+            <PeerGroupSection v-for="group in visibleGroups" :key="`${store.abGuid}:${group.id}`" :guid="store.abGuid" :group="group" :count="group.peer_count" :tags="store.tags" :query="store.query" :selected-tag="store.selectedTag" :connection="connection" :refresh-key="store.refreshKey" :initial-open="store.ungroupedCount === 0 && group.id === firstGroupId" :busy="saving" @add="addPeer" @edit="editPeer" @remove="removePeer" @edit-group="editOrganization('group', $event)" @remove-group="removeGroup" />
           </div>
         </div>
         <div v-else-if="store.loading" role="status" class="rounded-xl border border-gray-200 p-10 text-center text-sm text-gray-400 dark:border-rd-border">Loading device groups…</div>
