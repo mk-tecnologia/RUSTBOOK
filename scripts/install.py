@@ -8,6 +8,7 @@ import os
 from pathlib import Path
 import platform
 import secrets
+import shlex
 import shutil
 import subprocess
 import sys
@@ -57,30 +58,124 @@ class Installer:
         self.state_file = self.root / "install-state.json"
         self.env = self.root / ".env"
         self.data = self.root / "data"
+        self.deployment = None
+        self.adoption = None
+
+    def compose_args(self):
+        if not self.deployment:
+            return ["docker", "compose", "--project-name", "rustbook",
+                    "--env-file", str(self.env), "--file", str(self.config)]
+        context = self.deployment
+        args = ["docker", "compose", "--project-name", context["project"],
+                "--project-directory", context["directory"]]
+        if context.get("env_file"):
+            args += ["--env-file", context["env_file"]]
+        for config in context["files"] + [str(self.config)]:
+            args += ["--file", config]
+        return args
+
+    @property
+    def service(self):
+        return self.deployment["service"] if self.deployment else "address-book"
+
+    def document(self, image):
+        if self.deployment:
+            # Compose interpolates dollar signs even inside JSON values.
+            environment = {key: value.replace("$", "$$")
+                           for key, value in self.deployment["environment"].items()}
+            return {"services": {self.service: {
+                "image": image, "pull_policy": "never", "environment": environment}}}
+        return compose_document(image)
 
     def compose(self, *args):
-        return run("docker", "compose", "--project-name", "rustbook",
-                   "--env-file", str(self.env), "--file", str(self.config), *args)
+        return run(*self.compose_args(), *args)
+
+    def write_launcher(self):
+        path = self.root / "manage.sh"
+        path.write_text('#!/bin/sh\nexec ' + shlex.join(self.compose_args()) + ' "$@"\n')
+        os.chmod(path, 0o700)
 
     def check_ownership(self):
+        if self.state_file.exists():
+            state = json.loads(self.state_file.read_text())
+            self.deployment = state.get("deployment")
+            if self.deployment:
+                self.data = Path(self.deployment["data"])
         names = run("docker", "ps", "-a", "--format", "{{.Names}}", capture=True).splitlines()
         if CONTAINER in names:
-            project = run("docker", "inspect", "--format",
-                          '{{index .Config.Labels "com.docker.compose.project"}}',
-                          CONTAINER, capture=True)
-            config = run("docker", "inspect", "--format",
-                         '{{index .Config.Labels "com.docker.compose.project.config_files"}}',
-                         CONTAINER, capture=True)
-            if (project != "rustbook" or config != str(self.config)
-                    or not self.state_file.exists()):
-                raise RuntimeError("Já existe uma agenda fora deste instalador. "
-                                   "Migre conforme docs/INSTALACAO.md; nenhum container foi alterado.")
-        if not self.state_file.exists() and (
+            container = json.loads(run("docker", "inspect", CONTAINER, capture=True))[0]
+            labels = container["Config"].get("Labels") or {}
+            project = labels.get("com.docker.compose.project")
+            files = labels.get("com.docker.compose.project.config_files", "").split(",")
+            expected_project = self.deployment["project"] if self.deployment else "rustbook"
+            expected_files = (self.deployment["files"] if self.deployment else []) + [str(self.config)]
+            if not self.state_file.exists():
+                self.prepare_adoption(container)
+            elif (project != expected_project or (files != expected_files and not (
+                    self.deployment and state.get("version") is None
+                    and files == self.deployment["files"] and container["Image"] == state.get("image")))):
+                raise RuntimeError("O container não corresponde ao estado deste instalador; "
+                                   "nenhum container foi alterado.")
+            elif self.deployment:
+                self.deployment["environment"] = {
+                    key: value for item in container["Config"].get("Env", []) if "=" in item
+                    for key, value in [item.split("=", 1)] if key.startswith("RUSTDESK_AB_")}
+        if not self.state_file.exists() and not self.adoption and (
             self.config.exists() or self.env.exists()
             or (self.data.exists() and any(self.data.iterdir()))
         ):
             raise RuntimeError("Diretório com configuração/dados não gerenciados. "
                                "Consulte docs/INSTALACAO.md antes de migrar.")
+
+    def prepare_adoption(self, container):
+        """Recognize an existing Compose agenda and retain its deployment context."""
+        labels = container["Config"].get("Labels") or {}
+        project = labels.get("com.docker.compose.project")
+        directory = labels.get("com.docker.compose.project.working_dir")
+        service = labels.get("com.docker.compose.service")
+        files = labels.get("com.docker.compose.project.config_files", "").split(",")
+        if (not project or not directory or service != "address-book"
+                or any(not Path(path).is_absolute() or not Path(path).is_file() for path in files)
+                or not Path(directory).is_dir() or str(self.config) in files):
+            raise RuntimeError("Agenda fora deste instalador sem um Compose reconhecível; "
+                               "nenhum container foi alterado.")
+        mounts = [mount for mount in container.get("Mounts", []) if mount["Destination"] == "/data"]
+        if len(mounts) != 1 or mounts[0]["Type"] != "bind" or not mounts[0].get("RW"):
+            raise RuntimeError("Migração automática exige um volume bind gravável em /data.")
+        data = Path(mounts[0]["Source"])
+        environment = dict(item.split("=", 1) for item in container["Config"].get("Env", []) if "=" in item)
+        environment = {key: value for key, value in environment.items() if key.startswith("RUSTDESK_AB_")}
+        database = environment.get("RUSTDESK_AB_DB_PATH", "/data/db.sqlite3")
+        if database != "/data/db.sqlite3" or not (data / "db.sqlite3").is_file():
+            raise RuntimeError("Banco existente não encontrado em /data/db.sqlite3; atualização cancelada.")
+        if len(environment.get("RUSTDESK_AB_JWT_SECRET", "").encode()) < 32:
+            raise RuntimeError("A agenda existente precisa de uma chave JWT persistente de ao menos 32 bytes "
+                               "no ambiente; nenhum segredo foi substituído.")
+        if data.is_symlink() or any(path.is_symlink() for path in data.rglob("*")):
+            raise RuntimeError("O diretório de dados não pode conter links simbólicos.")
+        env_file = Path(directory) / ".env"
+        context = {"project": project, "directory": directory, "service": service,
+                   "files": files, "data": str(data), "environment": environment,
+                   "env_file": str(env_file) if env_file.is_file() else None}
+        # Validate the original Compose before building or interrupting the service.
+        self.deployment = context
+        args = self.compose_args()[:-2]  # The override does not exist yet.
+        resolved = json.loads(run(*args, "config", "--format", "json", capture=True))
+        original = resolved["services"][service]
+        volumes = [mount for mount in original.get("volumes", []) if mount.get("target") == "/data"]
+        if (original.get("container_name") != CONTAINER or len(volumes) != 1
+                or volumes[0].get("type") != "bind"
+                or Path(volumes[0].get("source", "")).resolve() != data.resolve()
+                or volumes[0].get("read_only", False)):
+            raise RuntimeError("O Compose atual não corresponde ao volume/container em execução; atualização cancelada.")
+        target = int(environment.get("RUSTDESK_AB_PORT", 21114))
+        if not any(int(port["target"]) == target and port.get("published")
+                   and port.get("protocol", "tcp") == "tcp" for port in original.get("ports", [])):
+            raise RuntimeError("A migração exige uma porta HTTP publicada no host para verificar a atualização.")
+        self.data = data
+        self.adoption = {"image": container["Image"], "version": None,
+                         "deployment": context, "was_running": bool(container["State"]["Running"])}
+        print(f"Agenda existente reconhecida: {directory}; dados preservados em {data}.", flush=True)
 
     def set_data_owner(self):
         for directory, subdirectories, files in os.walk(self.data):
@@ -96,6 +191,14 @@ class Installer:
     def credentials(self):
         if self.env.exists():
             return
+        if self.deployment:
+            if self.deployment.get("env_file"):
+                shutil.copy2(self.deployment["env_file"], self.env)
+                os.chmod(self.env, 0o600)
+            else:
+                self.env.write_text("# Configuração existente preservada em compose.json.\n")
+                os.chmod(self.env, 0o600)
+            return
         password = secrets.token_hex(16)
         # Never print credentials into terminal logs. The file is root-readable only.
         with self.env.open("x") as target:
@@ -108,6 +211,8 @@ class Installer:
     def import_existing(self, source):
         """Import an offline standalone deployment once, without touching its files."""
         self.check_ownership()
+        if self.adoption:
+            raise RuntimeError("Agenda Compose reconhecida; execute install latest sem --import-from.")
         if self.state_file.exists():
             raise RuntimeError("Este destino já é gerenciado; remova --import-from para atualizar.")
         source = source.resolve()
@@ -143,20 +248,40 @@ class Installer:
         for path in (self.env, self.config, self.state_file):
             if path.exists():
                 shutil.copy2(path, destination / path.name)
+        ownership = {}
+        for path in [self.data, *self.data.rglob("*")]:
+            if path.is_symlink():
+                raise RuntimeError("O diretório de dados não pode conter links simbólicos.")
+            status = path.stat()
+            ownership[str(path.relative_to(self.data))] = [status.st_uid, status.st_gid]
+        write_json(destination / "ownership.json", ownership)
+        if self.deployment:
+            sources = self.deployment["files"] + ([self.deployment["env_file"]]
+                                                  if self.deployment.get("env_file") else [])
+            snapshots = destination / "original-config"
+            snapshots.mkdir(mode=0o700)
+            for index, source in enumerate(sources):
+                shutil.copy2(source, snapshots / str(index))
+            write_json(snapshots / "paths.json", sources)
         print(f"Backup: {destination}", flush=True)
         return destination
 
     def wait_ready(self, version):
-        config = run("docker", "compose", "--project-name", "rustbook",
-                     "--env-file", str(self.env), "--file", str(self.config),
-                     "config", "--format", "json", capture=True)
-        service = json.loads(config)["services"]["address-book"]
-        host = service["ports"][0].get("host_ip", "127.0.0.1")
-        if host in ("0.0.0.0", "::"):
+        config = run(*self.compose_args(), "config", "--format", "json", capture=True)
+        service = json.loads(config)["services"][self.service]
+        target = int(service.get("environment", {}).get("RUSTDESK_AB_PORT", 21114))
+        ports = [port for port in service.get("ports", [])
+                 if int(port["target"]) == target and port.get("protocol", "tcp") == "tcp"]
+        if not ports or not ports[0].get("published"):
+            raise RuntimeError("A verificação exige uma porta HTTP publicada no host.")
+        host = ports[0].get("host_ip") or "127.0.0.1"
+        if host == "0.0.0.0":
             host = "127.0.0.1"
+        elif host == "::":
+            host = "::1"
         if ":" in host:
             host = f"[{host}]"
-        url = f"http://{host}:21114/api/version"
+        url = f"http://{host}:{ports[0]['published']}/api/version"
         client = urllib.request.build_opener(urllib.request.ProxyHandler({}))
         deadline = time.monotonic() + 60
         while time.monotonic() < deadline:
@@ -171,25 +296,36 @@ class Installer:
         raise RuntimeError("A agenda não respondeu com a versão esperada em 60 segundos.")
 
     def restore(self, backup, previous):
-        self.compose("down")
+        self.compose("stop", self.service)
         # Keep the failed database for diagnosis; never delete either database.
-        failed = backup / "failed-data"
+        failed = self.data.with_name(self.data.name + ".failed-" + backup.name)
         self.data.rename(failed)
         shutil.copytree(backup / "data", self.data)
-        self.set_data_owner()
+        ownership = json.loads((backup / "ownership.json").read_text())
+        for relative, owner in ownership.items():
+            os.chown(self.data / relative, *owner)
+        print(f"Dados da tentativa preservados em {failed}.", flush=True)
         for name in (".env", "compose.json", "install-state.json"):
             saved = backup / name
             if saved.exists():
                 shutil.copy2(saved, self.root / name)
-        if previous.get("image"):
-            self.compose("up", "-d", "--no-deps", "--no-build", "address-book")
-            self.wait_ready(previous["version"])
+        if previous.get("image") and previous.get("was_running", True):
+            self.compose("up", "-d", "--no-deps", "--no-build", "--force-recreate", self.service)
+            if previous.get("version"):
+                self.wait_ready(previous["version"])
+            else:
+                # Upstream deployments may not implement /api/version.
+                time.sleep(2)
+                if run("docker", "inspect", "--format", "{{.State.Running}}", CONTAINER,
+                       capture=True) != "true":
+                    raise RuntimeError("O container anterior não permaneceu em execução; consulte os logs.")
             print("Versão e banco anteriores restaurados.", flush=True)
 
     def install(self):
         self.check_ownership()
-        previous = json.loads(self.state_file.read_text()) if self.state_file.exists() else {}
-        if previous.get("image") and (not self.env.is_file() or not self.data.is_dir()):
+        previous = json.loads(self.state_file.read_text()) if self.state_file.exists() else self.adoption or {}
+        if (previous.get("image") and not self.adoption
+                and (not self.env.is_file() or not self.data.is_dir())):
             raise RuntimeError("Configuração ou dados ausentes; restaure o backup antes de atualizar.")
         with tempfile.TemporaryDirectory(prefix="source-", dir=self.root) as temporary:
             source = Path(temporary) / "repo"
@@ -204,28 +340,34 @@ class Installer:
         self.credentials()
         self.data.mkdir(mode=0o700, exist_ok=True)
         if not self.state_file.exists():
-            write_json(self.state_file, {})
+            if self.adoption:
+                write_json(self.config, self.document(previous["image"]))
+            write_json(self.state_file, previous)
+        self.write_launcher()
         try:
             if previous.get("image"):
-                self.compose("stop", "address-book")
+                self.compose("stop", self.service)
             backup = self.backup()
         except Exception:
-            if previous.get("image"):
-                self.compose("start", "address-book")
+            if previous.get("image") and previous.get("was_running", True):
+                self.compose("start", self.service)
             raise
         try:
             self.set_data_owner()
-            write_json(self.config, compose_document(image))
+            write_json(self.config, self.document(image))
             self.compose("config", "--quiet")
-            self.compose("up", "-d", "--no-deps", "--no-build", "address-book")
+            self.compose("up", "-d", "--no-deps", "--no-build", self.service)
             self.wait_ready(version)
-            write_json(self.state_file, {"commit": commit, "version": version, "image": image})
+            state = {"commit": commit, "version": version, "image": image}
+            if self.deployment:
+                state["deployment"] = self.deployment
+            write_json(self.state_file, state)
         except Exception:
             print("Falha na atualização; restaurando o backup...", file=sys.stderr, flush=True)
             self.restore(backup, previous)
             raise
         print(f"Concluído. Versão {version}; commit {commit}.\n"
-              f"Credenciais preservadas em {self.env} (usuário inicial: admin).\n"
+              f"Dados preservados em {self.data}; configuração privada em {self.root}.\n"
               "Use o mesmo comando para instalar a próxima atualização.", flush=True)
 
 
@@ -238,7 +380,7 @@ def main():
                         help="Importar uma agenda isolada parada (diretório com data/ e .env).")
     args = parser.parse_args()
     if platform.system() != "Linux" or os.geteuid() != 0:
-        parser.error("Execute como root (sudo) em um servidor Linux.")
+        parser.error("Execute como root em um servidor Linux (use su - em uma conta comum).")
     for command in ("git", "docker"):
         if not shutil.which(command):
             parser.error(f"Instale {command} antes de continuar.")
@@ -254,7 +396,7 @@ def main():
         try:
             fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
         except BlockingIOError:
-            parser.error("Outra instalação está em execução neste diretório.")
+            parser.error("Outra instalação do RUSTBOOK está em execução.")
         if args.import_from:
             installer.import_existing(args.import_from)
         installer.install()

@@ -5,6 +5,15 @@ vem do manifesto upstream; este arquivo não declara uma release própria public
 
 ## [Unreleased]
 
+### Fixed — atualização de instalações existentes
+
+- `install latest` reconhece a agenda Compose existente e preserva seu volume,
+  projeto, portas, configuração e credenciais, sem exigir importação manual.
+- Backup antes das migrações e rollback com imagem local anterior, WAL/SHM e
+  permissões originais, inclusive quando a versão antiga não tem `/api/version`.
+- Operações de Compose limitadas à agenda; wrapper `manage.sh` usa os arquivos
+  e o projeto corretos nas instalações novas e reconhecidas.
+
 ### Added
 
 - Instalador Linux por comando único (`install latest` / `update latest`), com

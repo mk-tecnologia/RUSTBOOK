@@ -26,21 +26,22 @@ demorar vários minutos. Versão atual do produto: **0.2.0**.
 
 O instalador:
 
-- Instala somente a agenda em `/opt/rustbook`, preservando `hbbs` e `hbbr`.
+- Instala somente a agenda; reconhece instalações Compose existentes e preserva
+  o volume, as portas, as credenciais, `hbbs` e `hbbr`.
 - Gera as credenciais na primeira instalação e as preserva nas próximas.
 - Constrói a imagem antes de parar a agenda para atualizar.
 - Faz backup do banco e da configuração com a agenda parada.
 - Inicia a nova versão, verifica a resposta da API e tenta restaurar a versão e o
   banco anteriores se a atualização falhar.
 
-**Já tem uma agenda instalada por outro método?** Faça a
-[migração inicial](docs/INSTALACAO.md#migrar-uma-agenda-existente) antes de usar o
-comando. O instalador recusa substituir um container ou dados que não gerencia.
+**Já tem uma agenda no container `rustdesk-address-book`?** O mesmo comando
+reconhece a instalação Compose e atualiza no diretório existente, sem importação
+manual. Veja os [requisitos de reconhecimento](docs/INSTALACAO.md#migrar-uma-agenda-existente).
 Homologue a atualização com seu cliente RustDesk antes de aplicá-la em produção.
 
 ## Primeiro acesso
 
-Por padrão, o serviço fica em `http://127.0.0.1:21114`, acessível no próprio servidor.
+Em uma instalação nova, o serviço fica em `http://127.0.0.1:21114`, acessível no próprio servidor.
 Publique esse endereço por um proxy com HTTPS. O usuário inicial é `admin`;
 consulte a senha gerada no servidor:
 
@@ -48,7 +49,8 @@ consulte a senha gerada no servidor:
 cat /opt/rustbook/.env
 ```
 
-Esse arquivo também contém a chave JWT: mantenha-o privado. Para acesso direto
+Em instalações existentes, o acesso e as credenciais atuais são mantidos.
+Esse arquivo também pode conter a chave JWT: mantenha-o privado. Para acesso direto
 pela rede interna, consulte [acesso e configuração](docs/INSTALACAO.md#acesso-e-configuração).
 
 No cliente RustDesk, configure **API Server** com a URL HTTPS da agenda. Mantenha
