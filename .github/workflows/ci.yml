@@ -31,6 +31,7 @@ jobs:
         run: |
           python3 scripts/check_version.py
           python3 -m py_compile scripts/verify_client_api.py
+          python3 -m unittest discover -s scripts/tests -v
       - name: Install frontend dependencies
         run: npm --prefix web ci
       - name: Audit frontend dependencies

@@ -7,12 +7,17 @@ vem do manifesto upstream; este arquivo não declara uma release própria public
 
 ### Added
 
+- Instalador Linux por comando único (`install latest` / `update latest`), com
+  credenciais persistentes, backup offline e tentativa de rollback automático.
+- Importação inicial de agenda existente e regressões de segurança do instalador.
 - Análise técnica, guia de layout e regras de contribuição e versionamento.
 - CI para build web, testes Rust, Clippy e consistência de versões.
 - Modelos de pull request e issues, EditorConfig e verificador de versões.
 
 ### Changed
 
+- README focado em instalação e uso; desenvolvimento, configuração e API movidos
+  para documentação específica.
 - Versão do pacote web alinhada à versão `0.1.0` do produto.
 - Arquivos locais do IDE e segredos de ambiente ignorados pelo Git.
 

@@ -1,5 +1,10 @@
 # Operação e atualização
 
+Para instalar ou atualizar pelo comando único, consulte [instalação](INSTALACAO.md).
+O instalador faz backup offline e tenta restaurar a imagem e o banco anteriores
+em falha. Os procedimentos abaixo também orientam implantações manuais e a
+recuperação quando a restauração automática não puder ser concluída.
+
 ## Antes de atualizar uma instalação existente
 
 1. Pare o serviço da agenda e faça backup do banco e dos arquivos WAL/SHM que

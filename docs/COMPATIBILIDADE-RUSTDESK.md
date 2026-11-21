@@ -54,6 +54,9 @@ navegação fora da API continua usando o fallback do painel.
 
 ## Implantação com hbbs/hbbr existentes
 
+Para o instalador por comando único e migração de instalações existentes, consulte
+[instalação](INSTALACAO.md). Esta seção descreve a alternativa com Compose manual.
+
 Use `compose.deploy.example.yaml` como base e copie para `compose.deploy.yaml`.
 O template contém somente a agenda, usa o Dockerfile local e preserva o caminho
 `./data/db.sqlite3` descrito no registro. Não substitua a configuração existente
