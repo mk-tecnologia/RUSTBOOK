@@ -54,3 +54,119 @@ jobs:
         run: cargo test --locked
       - name: Clippy
         run: cargo clippy --locked --all-targets -- -D warnings
+
+  package:
+    needs: quality
+    if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: amd64
+            runner: ubuntu-latest
+          - arch: arm64
+            runner: ubuntu-24.04-arm
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+      - uses: docker/setup-buildx-action@v3
+      - name: Build native runtime image
+        uses: docker/build-push-action@v7
+        with:
+          context: .
+          load: true
+          tags: rustbook:${{ github.sha }}
+          build-args: RUSTBOOK_BUILD_COMMIT=${{ github.sha }}
+          cache-from: type=gha,scope=runtime-${{ matrix.arch }}
+          cache-to: type=gha,scope=runtime-${{ matrix.arch }},mode=max,ignore-error=true
+      - name: Verify native image before publishing
+        env:
+          IMAGE: rustbook:${{ github.sha }}
+          BUILD_COMMIT: ${{ github.sha }}
+        run: |
+          trap 'docker rm -f -v rustbook-ci-smoke >/dev/null 2>&1 || true' EXIT
+          docker run -d --name rustbook-ci-smoke -p 127.0.0.1:21114:21114 \
+            -e RUSTDESK_AB_JWT_SECRET="$(openssl rand -hex 32)" \
+            -e RUSTDESK_AB_ADMIN_PASSWORD=synthetic-ci-only-password "$IMAGE"
+          test "$(docker exec rustbook-ci-smoke id -u)" = 10001
+          for attempt in $(seq 1 30); do
+            if curl --fail --silent http://127.0.0.1:21114/api/version > runtime-version.json; then
+              python3 -c 'import json,os,tomllib; data=json.load(open("runtime-version.json")); assert data["version"] == tomllib.load(open("Cargo.toml", "rb"))["package"]["version"]; assert data["commit"] == os.environ["BUILD_COMMIT"]'
+              exit 0
+            fi
+            sleep 2
+          done
+          docker logs rustbook-ci-smoke
+          exit 1
+      - name: Export compressed image
+        env:
+          IMAGE: rustbook:${{ github.sha }}
+          ARCH: ${{ matrix.arch }}
+        run: docker save "$IMAGE" | gzip -1 > "rustbook-linux-${ARCH}.tar.gz"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: runtime-${{ matrix.arch }}
+          path: rustbook-linux-*.tar.gz
+          compression-level: 0
+          retention-days: 3
+
+  publish:
+    needs: package
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: runtime-*
+          merge-multiple: true
+          path: release-assets
+      - name: Generate integrity manifest
+        run: python3 scripts/package_release.py release-assets
+      - name: Publish public runtime downloads
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          tag="build-${GITHUB_SHA}"
+          if gh release view "$tag" --json isDraft --jq .isDraft > release-draft.txt 2>/dev/null; then
+            if [ "$(cat release-draft.txt)" = false ]; then
+              echo "Build already published; keeping immutable downloads."
+              exit 0
+            fi
+          else
+            gh release create "$tag" --target "$GITHUB_SHA" --draft --prerelease \
+              --title "Build ${GITHUB_SHA:0:12}" \
+              --notes "Imagens automáticas amd64/arm64 de um commit com CI aprovada. Não substituem homologação em produção."
+          fi
+          gh release upload "$tag" release-assets/* --clobber
+          gh release edit "$tag" --draft=false
+      - name: Publish tagged product version
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          version=$(python3 -c 'import json; print(json.load(open("release-assets/manifest.json"))["version"])')
+          tag="v${version}"
+          target=$(gh api "repos/${GH_REPO}/commits/${tag}" --jq .sha 2>/dev/null || true)
+          if [ "$target" != "$GITHUB_SHA" ]; then
+            echo "No product tag for this commit; automatic build remains available."
+            exit 0
+          fi
+          if gh release view "$tag" --json isDraft --jq .isDraft > release-draft.txt 2>/dev/null; then
+            if [ "$(cat release-draft.txt)" = false ]; then
+              echo "Product release already published; keeping immutable downloads."
+              exit 0
+            fi
+          else
+            python3 -c 'import json,pathlib; version=json.load(open("release-assets/manifest.json"))["version"]; notes=pathlib.Path("CHANGELOG.md").read_text().split("## ["+version+"]",1)[1].split("\n## [",1)[0]; pathlib.Path("release-notes.md").write_text(notes.lstrip(" -0123456789\n"))'
+            gh release create "$tag" --verify-tag --draft --title "RUSTBOOK ${version}" --notes-file release-notes.md
+          fi
+          gh release upload "$tag" release-assets/* --clobber
+          gh release edit "$tag" --draft=false --latest

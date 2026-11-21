@@ -65,7 +65,9 @@ O seletor no cabeçalho usa um controle segmentado compacto com ícones de sol, 
 e monitor. As opções são radios nativos com nomes acessíveis, seleção visível,
 foco por teclado e identificação ao passar o mouse. Não usa dropdown.
 
-O cabeçalho consulta `GET /api/version` sem cache para exibir a versão do servidor.
+O cabeçalho consulta `GET /api/version` sem cache para exibir a versão e o SHA
+curto do build, por exemplo `v0.3.0 · abc1234`. A consulta é refeita a cada minuto
+e quando a janela recebe foco, para acompanhar atualizações do servidor.
 Quando a API está indisponível ou o backend é antigo, mostrar "Version unavailable"
 em vez de inferir a versão instalada pelo pacote web. Essa consulta é pública e
 não retorna credenciais, caminhos ou configuração.

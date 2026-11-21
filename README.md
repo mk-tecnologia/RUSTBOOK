@@ -11,7 +11,7 @@ autores originais foram preservados. Licença [AGPL-3.0](LICENSE).
 
 ## Instalar ou atualizar
 
-Em um servidor **Linux**, com **Docker Engine, Docker Compose v2, Git, curl e
+Em um servidor **Linux**, com **Docker Engine, Docker Compose v2, curl e
 Python 3.11+** instalados, execute **como root**:
 
 ```bash
@@ -20,16 +20,17 @@ curl -fsSL https://raw.githubusercontent.com/mk-tecnologia/RUSTBOOK/main/scripts
 
 Se estiver usando uma conta comum, entre como root com `su -` antes de executar.
 
-**O mesmo comando instala e atualiza.** `latest` significa o código mais recente
-da branch `main`. A imagem é compilada no servidor; a primeira instalação pode
-demorar vários minutos. Versão atual do produto: **0.2.0**.
+**O mesmo comando instala e atualiza.** Ele baixa a imagem pronta mais recente
+publicada pela CI para **amd64 ou arm64**, verifica sua integridade e aplica a
+atualização. **Não compila no servidor.** Se o mesmo commit já estiver em execução
+e saudável, termina sem baixar a imagem ou reiniciar. Versão atual: **[0.3.0](https://github.com/mk-tecnologia/RUSTBOOK/releases/tag/v0.3.0)**.
 
 O instalador:
 
 - Instala somente a agenda; reconhece instalações Compose existentes e preserva
   o volume, as portas, as credenciais, `hbbs` e `hbbr`.
 - Gera as credenciais na primeira instalação e as preserva nas próximas.
-- Constrói a imagem antes de parar a agenda para atualizar.
+- Baixa e verifica a imagem antes de parar a agenda para atualizar.
 - Faz backup do banco e da configuração com a agenda parada.
 - Inicia a nova versão, verifica a resposta da API e tenta restaurar a versão e o
   banco anteriores se a atualização falhar.

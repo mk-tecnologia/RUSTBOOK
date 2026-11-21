@@ -3,10 +3,12 @@
 
 import argparse
 import fcntl
+import hashlib
 import json
 import os
 from pathlib import Path
 import platform
+import re
 import secrets
 import shlex
 import shutil
@@ -19,6 +21,7 @@ import urllib.request
 
 
 REPOSITORY = "https://github.com/mk-tecnologia/RUSTBOOK.git"
+RELEASES = "https://api.github.com/repos/mk-tecnologia/RUSTBOOK/releases?per_page=30"
 CONTAINER = "rustdesk-address-book"
 
 
@@ -33,6 +36,35 @@ def write_json(path, value):
     temporary.write_text(json.dumps(value, indent=2) + "\n")
     os.chmod(temporary, 0o600)
     temporary.replace(path)
+
+
+def fetch_json(url):
+    request = urllib.request.Request(url, headers={"User-Agent": "RUSTBOOK-installer",
+                                                  "Accept": "application/json"})
+    with urllib.request.urlopen(request, timeout=30) as response:
+        return json.load(response)
+
+
+def published_build(architecture):
+    for release in fetch_json(RELEASES):
+        tag = release.get("tag_name", "")
+        assets = {asset["name"]: asset["browser_download_url"] for asset in release.get("assets", [])}
+        if (release.get("draft") or not re.fullmatch(r"build-[0-9a-f]{40}", tag)
+                or "manifest.json" not in assets):
+            continue
+        manifest = fetch_json(assets["manifest.json"])
+        if manifest.get("commit") != tag.removeprefix("build-"):
+            raise RuntimeError("O manifesto publicado não corresponde ao commit da imagem.")
+        image = manifest.get("images", {}).get(architecture)
+        if not image or image.get("asset") not in assets:
+            continue
+        if (image.get("image") != f"rustbook:{manifest['commit']}"
+                or not re.fullmatch(r"[0-9a-f]{64}", image.get("sha256", ""))
+                or not isinstance(manifest.get("version"), str)):
+            raise RuntimeError("Manifesto de imagem inválido; nenhum serviço foi alterado.")
+        return manifest, image, assets[image["asset"]]
+    raise RuntimeError("Nenhuma imagem pronta foi publicada ainda. Aguarde a CI no GitHub e repita "
+                       "o comando, ou use --build para compilar explicitamente neste servidor.")
 
 
 def compose_document(image):
@@ -52,7 +84,7 @@ def compose_document(image):
 
 
 class Installer:
-    def __init__(self, directory):
+    def __init__(self, directory, build_locally=False):
         self.root = directory.resolve()
         self.config = self.root / "compose.json"
         self.state_file = self.root / "install-state.json"
@@ -60,6 +92,59 @@ class Installer:
         self.data = self.root / "data"
         self.deployment = None
         self.adoption = None
+        self.build_locally = build_locally
+
+    def already_current(self, previous, commit, version):
+        if previous.get("commit") != commit or previous.get("version") != version:
+            return False
+        try:
+            current = json.loads(run("docker", "inspect", CONTAINER, capture=True))[0]
+            image_id = run("docker", "image", "inspect", previous["image"],
+                           "--format", "{{.Id}}", capture=True)
+            if not current["State"]["Running"] or current["Image"] != image_id:
+                return False
+            self.wait_ready(version, commit)
+        except (subprocess.CalledProcessError, RuntimeError, ValueError, KeyError):
+            return False
+        print(f"Já atualizado: {version}, commit {commit}. Nenhum build ou reinício necessário.", flush=True)
+        return True
+
+    def prepare_image(self, previous):
+        if not self.build_locally:
+            architecture = run("docker", "info", "--format", "{{.Architecture}}", capture=True)
+            architecture = {"x86_64": "amd64", "aarch64": "arm64"}.get(architecture, architecture)
+            if architecture not in ("amd64", "arm64"):
+                raise RuntimeError("Não há imagem pronta para esta arquitetura; use --build.")
+            manifest, artifact, url = published_build(architecture)
+            commit, version = manifest["commit"], manifest["version"]
+            if self.already_current(previous, commit, version):
+                return None
+            print(f"Baixando imagem pronta {version} ({architecture}), commit {commit}...", flush=True)
+            with tempfile.TemporaryDirectory(prefix="image-", dir=self.root) as temporary:
+                archive = Path(temporary) / "image.tar.gz"
+                digest = hashlib.sha256()
+                with urllib.request.urlopen(url, timeout=60) as response, archive.open("wb") as target:
+                    while chunk := response.read(1024 * 1024):
+                        digest.update(chunk)
+                        target.write(chunk)
+                if digest.hexdigest() != artifact["sha256"]:
+                    raise RuntimeError("A imagem baixada falhou na verificação SHA-256; atualização cancelada.")
+                run("docker", "load", "--input", str(archive))
+            # Verify the archive actually loaded the manifest's expected tag.
+            run("docker", "image", "inspect", artifact["image"], capture=True)
+            return commit, version, artifact["image"]
+        with tempfile.TemporaryDirectory(prefix="source-", dir=self.root) as temporary:
+            source = Path(temporary) / "repo"
+            run("git", "clone", "--depth", "1", "--branch", "main", "--", REPOSITORY, str(source))
+            commit = run("git", "-C", str(source), "rev-parse", "HEAD", capture=True)
+            with (source / "Cargo.toml").open("rb") as manifest:
+                version = tomllib.load(manifest)["package"]["version"]
+            if self.already_current(previous, commit, version):
+                return None
+            image = f"rustbook:{commit}"
+            print(f"Compilação local solicitada: {version}, commit {commit}.", flush=True)
+            run("docker", "build", "--build-arg", f"RUSTBOOK_BUILD_COMMIT={commit}", "--tag", image, str(source))
+            return commit, version, image
 
     def compose_args(self):
         if not self.deployment:
@@ -266,7 +351,7 @@ class Installer:
         print(f"Backup: {destination}", flush=True)
         return destination
 
-    def wait_ready(self, version):
+    def wait_ready(self, version, commit=None):
         config = run(*self.compose_args(), "config", "--format", "json", capture=True)
         service = json.loads(config)["services"][self.service]
         target = int(service.get("environment", {}).get("RUSTDESK_AB_PORT", 21114))
@@ -287,7 +372,8 @@ class Installer:
         while time.monotonic() < deadline:
             try:
                 with client.open(url, timeout=3) as response:
-                    if json.load(response).get("version") == version:
+                    metadata = json.load(response)
+                    if metadata.get("version") == version and (commit is None or metadata.get("commit") == commit):
                         print(f"Agenda disponível: {url}", flush=True)
                         return
             except (OSError, ValueError):
@@ -327,16 +413,11 @@ class Installer:
         if (previous.get("image") and not self.adoption
                 and (not self.env.is_file() or not self.data.is_dir())):
             raise RuntimeError("Configuração ou dados ausentes; restaure o backup antes de atualizar.")
-        with tempfile.TemporaryDirectory(prefix="source-", dir=self.root) as temporary:
-            source = Path(temporary) / "repo"
-            run("git", "clone", "--depth", "1", "--branch", "main", "--", REPOSITORY, str(source))
-            commit = run("git", "-C", str(source), "rev-parse", "HEAD", capture=True)
-            with (source / "Cargo.toml").open("rb") as manifest:
-                version = tomllib.load(manifest)["package"]["version"]
-            image = f"rustbook:{commit}"
-            print(f"Instalando {version}, commit {commit}", flush=True)
-            # Build before stopping the old service. A failed build leaves it running.
-            run("docker", "build", "--tag", image, str(source))
+        # Download/verify (or explicitly build) before stopping the old service.
+        prepared = self.prepare_image(previous)
+        if prepared is None:
+            return
+        commit, version, image = prepared
         self.credentials()
         self.data.mkdir(mode=0o700, exist_ok=True)
         if not self.state_file.exists():
@@ -357,7 +438,7 @@ class Installer:
             write_json(self.config, self.document(image))
             self.compose("config", "--quiet")
             self.compose("up", "-d", "--no-deps", "--no-build", self.service)
-            self.wait_ready(version)
+            self.wait_ready(version, commit)
             state = {"commit": commit, "version": version, "image": image}
             if self.deployment:
                 state["deployment"] = self.deployment
@@ -378,16 +459,17 @@ def main():
     parser.add_argument("--directory", type=Path, default=Path("/opt/rustbook"))
     parser.add_argument("--import-from", type=Path,
                         help="Importar uma agenda isolada parada (diretório com data/ e .env).")
+    parser.add_argument("--build", action="store_true", help="Compilar main localmente em vez de baixar imagem pronta.")
     args = parser.parse_args()
     if platform.system() != "Linux" or os.geteuid() != 0:
         parser.error("Execute como root em um servidor Linux (use su - em uma conta comum).")
-    for command in ("git", "docker"):
+    for command in (("git", "docker") if args.build else ("docker",)):
         if not shutil.which(command):
             parser.error(f"Instale {command} antes de continuar.")
     os.umask(0o077)
     run("docker", "compose", "version")
     run("docker", "info", "--format", "{{.ServerVersion}}")
-    installer = Installer(args.directory)
+    installer = Installer(args.directory, build_locally=args.build)
     installer.root.mkdir(parents=True, exist_ok=True, mode=0o700)
     # All directories share a project/container name: serialize across directories too.
     lock_directory = Path("/run/lock")

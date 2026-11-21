@@ -1,6 +1,7 @@
 """Installer safety regressions; Docker/Git are mocked, data copies are real."""
 
 import importlib.util
+import hashlib
 import io
 import json
 from pathlib import Path
@@ -21,7 +22,7 @@ class InstallTests(unittest.TestCase):
         self.addCleanup(self.temporary.cleanup)
         self.root = Path(self.temporary.name) / "managed"
         self.root.mkdir()
-        self.app = installer.Installer(self.root)
+        self.app = installer.Installer(self.root, build_locally=True)
         self.calls = []
         self.runner = patch.object(installer, "run", side_effect=self.run_command).start()
         self.chown = patch.object(installer.os, "chown").start()
@@ -134,7 +135,7 @@ class InstallTests(unittest.TestCase):
     def test_legacy_install_can_be_updated_again_without_manual_import(self):
         self.legacy()
         self.app.install()
-        second = installer.Installer(self.root)
+        second = installer.Installer(self.root, build_locally=True)
         with patch.object(second, "wait_ready"):
             second.install()
         self.assertEqual(second.data, self.legacy_data)
@@ -160,7 +161,7 @@ class InstallTests(unittest.TestCase):
         old_image = self.container["Image"]
         owner = (self.legacy_data / "db.sqlite3").stat().st_uid
 
-        def unhealthy(version):
+        def unhealthy(version, *_):
             (self.legacy_data / "db.sqlite3").write_bytes(b"migrated database")
             raise RuntimeError("legacy update failed")
 
@@ -182,7 +183,7 @@ class InstallTests(unittest.TestCase):
         with patch.object(self.app, "backup", side_effect=OSError("disk full")):
             with self.assertRaises(OSError):
                 self.app.install()
-        second = installer.Installer(self.root)
+        second = installer.Installer(self.root, build_locally=True)
         with patch.object(second, "wait_ready"):
             second.install()
         self.assertEqual(second.data, self.legacy_data)
@@ -191,7 +192,7 @@ class InstallTests(unittest.TestCase):
         self.legacy()
         self.app.install()
         self.container["Config"]["Env"].append("RUSTDESK_AB_CORS_ORIGINS=https://updated.example.com")
-        second = installer.Installer(self.root)
+        second = installer.Installer(self.root, build_locally=True)
         with patch.object(second, "wait_ready"):
             second.install()
         override = json.loads(second.config.read_text())["services"]["address-book"]
@@ -220,6 +221,80 @@ class InstallTests(unittest.TestCase):
         self.assertEqual((self.legacy_data / "db.sqlite3").read_bytes(), b"legacy database")
         self.assertFalse(self.compose_calls("stop"))
 
+    def ready_archive(self, content=b"synthetic compressed Docker archive"):
+        manifest = {"commit": "a" * 40, "version": "0.2.0"}
+        artifact = {"image": "rustbook:" + "a" * 40,
+                    "sha256": hashlib.sha256(content).hexdigest()}
+        self.app.build_locally = False
+
+        def run_download(*args, capture=False):
+            if args[:2] == ("docker", "info"):
+                self.calls.append(args)
+                return "x86_64"
+            return self.run_command(*args, capture=capture)
+
+        self.runner.side_effect = run_download
+        published = patch.object(installer, "published_build", return_value=(
+            manifest, artifact, "https://github.com/synthetic/archive.tar.gz")).start()
+        download = patch.object(installer.urllib.request, "urlopen", return_value=io.BytesIO(content)).start()
+        return manifest, artifact, published, download, run_download
+
+    def test_published_image_updates_without_git_or_compilation(self):
+        manifest, artifact, published, download, _ = self.ready_archive()
+        self.app.install()
+        published.assert_called_once_with("amd64")
+        self.assertTrue(download.called)
+        self.assertTrue(any(call[:2] == ("docker", "load") for call in self.calls))
+        self.assertFalse(any(call[0] == "git" or call[:2] == ("docker", "build") for call in self.calls))
+        self.assertEqual(json.loads(self.app.state_file.read_text())["commit"], manifest["commit"])
+
+    def test_invalid_download_checksum_never_loads_image_or_stops_service(self):
+        self.existing()
+        _, artifact, _, _, _ = self.ready_archive()
+        artifact["sha256"] = "0" * 64
+        with self.assertRaisesRegex(RuntimeError, "SHA-256"):
+            self.app.install()
+        self.assertFalse(any(call[:2] == ("docker", "load") for call in self.calls))
+        self.assertFalse(self.compose_calls("stop"))
+        self.assertEqual(json.loads(self.app.state_file.read_text()), self.previous)
+
+    def test_same_commit_and_running_image_do_not_download_build_or_restart(self):
+        self.existing()
+        manifest, _, _, download, previous_run = self.ready_archive()
+        self.previous.update(commit=manifest["commit"], version=manifest["version"])
+        installer.write_json(self.app.state_file, self.previous)
+
+        def running(*args, capture=False):
+            if args[:3] == ("docker", "inspect", installer.CONTAINER):
+                return json.dumps([{"State": {"Running": True}, "Image": "same-image-id"}])
+            if args[:3] == ("docker", "image", "inspect"):
+                return "same-image-id"
+            return previous_run(*args, capture=capture)
+
+        self.runner.side_effect = running
+        self.app.install()
+        download.assert_not_called()
+        self.assertFalse(self.compose_calls("stop"))
+        self.assertFalse(self.compose_calls("up"))
+        self.assertFalse((self.root / "backups").exists())
+        self.assertFalse(any(call[:2] == ("docker", "load") for call in self.calls))
+
+    def test_missing_published_build_never_silently_falls_back_to_compilation(self):
+        self.existing()
+        self.ready_archive()
+        with patch.object(installer, "published_build", side_effect=RuntimeError("Aguarde a CI")):
+            with self.assertRaisesRegex(RuntimeError, "Aguarde a CI"):
+                self.app.install()
+        self.assertFalse(self.compose_calls("stop"))
+        self.assertFalse(any(call[0] == "git" or call[:2] == ("docker", "build") for call in self.calls))
+
+    def test_published_manifest_must_match_release_commit(self):
+        release = {"tag_name": "build-" + "a" * 40, "assets": [
+            {"name": "manifest.json", "browser_download_url": "https://example.com/manifest.json"}]}
+        with patch.object(installer, "fetch_json", side_effect=[[release], {"commit": "b" * 40}]):
+            with self.assertRaisesRegex(RuntimeError, "não corresponde"):
+                installer.published_build("amd64")
+
     def test_fresh_install_generates_private_credentials_and_pins_image(self):
         self.app.install()
         content = self.app.env.read_text()
@@ -231,7 +306,7 @@ class InstallTests(unittest.TestCase):
         self.assertEqual(state["image"], "rustbook:" + "a" * 40)
         self.assertEqual(json.loads(self.app.config.read_text())["services"]["address-book"]["image"], state["image"])
         self.assertFalse(self.compose_calls("stop"))
-        self.ready.assert_called_once_with("0.2.0")
+        self.ready.assert_called_once_with("0.2.0", "a" * 40)
 
     def test_update_preserves_credentials_and_backs_up_stopped_database(self):
         self.existing()
@@ -277,7 +352,7 @@ class InstallTests(unittest.TestCase):
     def test_failed_health_restores_database_wal_image_and_credentials(self):
         self.existing()
 
-        def unhealthy(version):
+        def unhealthy(version, *_):
             if version == "0.2.0":
                 (self.app.data / "db.sqlite3").write_bytes(b"migrated database")
                 (self.app.data / "db.sqlite3-wal").write_bytes(b"migrated WAL")
@@ -371,6 +446,21 @@ class InstallTests(unittest.TestCase):
             sleep.assert_called_once_with(2)
             self.assertEqual(opener.return_value.open.call_count, 2)
             opener.return_value.open.assert_called_with("http://127.0.0.1:21114/api/version", timeout=3)
+
+    def test_same_product_version_with_wrong_build_is_not_accepted(self):
+        config = {"services": {"address-book": {"ports": [
+            {"host_ip": "127.0.0.1", "target": 21114, "published": "21114"}]}}}
+        self.runner.side_effect = None
+        self.runner.return_value = json.dumps(config)
+        with patch.object(installer.urllib.request, "build_opener") as opener, \
+                patch.object(installer.time, "sleep") as sleep:
+            opener.return_value.open.side_effect = [
+                io.StringIO(json.dumps({"version": "0.3.0", "commit": "b" * 40})),
+                io.StringIO(json.dumps({"version": "0.3.0", "commit": "a" * 40})),
+            ]
+            installer.Installer.wait_ready(self.app, "0.3.0", "a" * 40)
+            sleep.assert_called_once_with(2)
+            self.assertEqual(opener.return_value.open.call_count, 2)
 
 
 if __name__ == "__main__":

@@ -6,17 +6,21 @@ Execute os comandos deste guia como **root**. Em uma conta comum, entre com
 `su -` antes de continuar. Não é necessário ter `sudo` instalado.
 
 Requisitos no servidor: Linux, acesso root, Docker Engine com Compose v2,
-Git, curl e Python 3.11 ou superior. O instalador não instala esses requisitos.
-Não é necessário instalar Rust ou Node no host: a compilação acontece no Docker.
-Reserve espaço para o build, a imagem anterior e uma cópia completa do banco.
+curl e Python 3.11 ou superior. O instalador não instala esses requisitos.
+O fluxo padrão baixa uma imagem pronta para a arquitetura do Docker (amd64/arm64);
+não precisa de Git, Rust ou Node. Reserve espaço para o download, as imagens nova
+e anterior e uma cópia completa do banco.
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/mk-tecnologia/RUSTBOOK/main/scripts/install.py | python3 - install latest
 ```
 
 Repita o mesmo comando para atualizar. `update latest` também é aceito.
-`latest` acompanha a branch `main`, não uma GitHub Release homologada.
-O commit efetivamente compilado é registrado no servidor. Faça a homologação
+`latest` seleciona o build mais recente publicado pela CI após aprovação dos
+testes. Os downloads ficam nas pré-releases públicas `build-<commit>` e, quando houver
+tag de produto para o commit, na release `vMAJOR.MINOR.PATCH` do GitHub,
+com imagens amd64/arm64 e um manifesto SHA-256. Isso não equivale a uma release
+homologada. O commit instalado é registrado no servidor. Faça a homologação
 com uma cópia do banco e com seus clientes antes de atualizar a produção.
 
 O instalador guarda seus arquivos de controle em `/opt/rustbook`. Em uma
@@ -37,7 +41,7 @@ Quando não existe agenda, a primeira execução cria credenciais aleatórias e 
 a configuração e os usuários são preservados. A senha do `.env` só cria o admin
 quando o banco está vazio; ela não redefine senhas de contas existentes.
 
-A imagem é compilada antes da interrupção. Depois, a agenda é parada, os dados
+A imagem é baixada, verificada por SHA-256 e carregada no Docker antes da interrupção. Depois, a agenda é parada, os dados
 são copiados e a nova imagem é iniciada. A API precisa responder com a versão
 esperada em até 60 segundos. Em falha, o instalador tenta restaurar o banco e a
 imagem anteriores e retorna erro. Se essa restauração também falhar, mantenha o
@@ -47,6 +51,26 @@ pelo cliente após cada atualização.
 Backups e imagens anteriores não são apagados automaticamente. Monitore o espaço
 em disco e mantenha cópias externas: um backup no mesmo disco não protege contra
 a perda do servidor. O instalador não configura TLS, firewall, hbbs ou hbbr.
+
+## Atualização rápida e compilação opcional
+
+Se o commit publicado já estiver instalado, o instalador confere o container, o
+ID da imagem e a API e termina sem download da imagem, backup ou reinício.
+Se ainda não houver um build publicado, ele informa que é preciso aguardar a CI;
+não começa uma compilação demorada automaticamente. Um commit novo na `main`
+pode levar alguns minutos para aparecer nos downloads, enquanto a CI trabalha.
+
+Para compilar a `main` diretamente no servidor, escolha explicitamente `--build`:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/mk-tecnologia/RUSTBOOK/main/scripts/install.py | python3 - install latest --build
+```
+
+Esse modo adicional exige Git e recursos para compilar. O Dockerfile mantém as
+dependências Rust em uma camada independente dos fontes e do frontend, para que
+alterações de interface recompilem apenas o aplicativo. Mudanças nos manifests,
+lockfiles ou imagens base podem exigir recompilação das dependências. A CI também
+reaproveita essas camadas com cache separado por arquitetura.
 
 ## Acesso e configuração
 
@@ -88,7 +112,7 @@ não substituem a configuração persistente do `.env` para o container.
 ## Migrar uma agenda existente
 
 Use o mesmo comando `install latest`. Não pare nem renomeie o container antes:
-o instalador faz a parada somente depois de compilar a nova imagem.
+o instalador faz a parada somente depois de baixar e verificar a nova imagem.
 
 A detecção automática atende o cenário:
 

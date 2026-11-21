@@ -992,5 +992,11 @@ async fn running_server_version_is_public_and_not_cacheable() {
     assert_eq!(response.headers()["cache-control"], "no-store");
     let bytes = to_bytes(response.into_body(), 1024).await.unwrap();
     let body: Value = serde_json::from_slice(&bytes).unwrap();
-    assert_eq!(body, json!({"version":env!("CARGO_PKG_VERSION")}));
+    assert_eq!(
+        body,
+        json!({
+            "version": env!("CARGO_PKG_VERSION"),
+            "commit": option_env!("RUSTBOOK_BUILD_COMMIT").unwrap_or("unknown"),
+        })
+    );
 }

@@ -22,7 +22,10 @@ pub fn routes() -> Router<AppState> {
 async fn version() -> impl axum::response::IntoResponse {
     (
         [(axum::http::header::CACHE_CONTROL, "no-store")],
-        Json(json!({"version": env!("CARGO_PKG_VERSION")})),
+        Json(json!({
+            "version": env!("CARGO_PKG_VERSION"),
+            "commit": option_env!("RUSTBOOK_BUILD_COMMIT").unwrap_or("unknown"),
+        })),
     )
 }
 

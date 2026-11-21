@@ -1,9 +1,42 @@
 # Changelog
 
-As mudanças desta continuação do projeto serão registradas aqui. A versão `0.1.0`
-vem do manifesto upstream; este arquivo não declara uma release própria publicada.
+Histórico desta continuação de `ds4a/rustdesk-address-book`. A versão herdada do
+manifesto upstream é `0.1.0`; não são inventadas releases anteriores do upstream.
 
 ## [Unreleased]
+
+Sem alterações pendentes.
+
+## [0.3.0] - 2026-11-21
+
+### Added
+
+- Imagens Docker prontas para Linux amd64 e arm64, publicadas pela CI após os
+  testes, com manifesto SHA-256 e identificação do commit compilado.
+- Release de produto `v0.3.0` e builds automáticos identificados por commit.
+- API de versão com `version` e `commit`; o cabeçalho exibe ambos e atualiza a
+  consulta a cada minuto e ao retornar à janela.
+
+### Performance
+
+- O instalador baixa e verifica a imagem pronta, sem compilar no servidor.
+- Instalação saudável no mesmo commit termina sem download de imagem ou reinício.
+- Camada independente de dependências Rust e cache de build por arquitetura.
+- Compilação local da `main` continua disponível com a opção explícita `--build`.
+
+### Compatibility
+
+- Preserva o fluxo de adoção de agendas Compose, dados, configuração e credenciais.
+- Backup offline e rollback da imagem e do banco continuam ativos nas atualizações.
+- Não adiciona migrações de banco em relação ao desenvolvimento `0.2.0`.
+- Clientes de `/api/version` que usam apenas `version` continuam compatíveis.
+- Ao atualizar uma instalação antiga, faça login novamente se as sessões expirarem
+  e valide os clientes RustDesk conforme o guia de operação.
+
+## [0.2.0] - desenvolvimento anterior, sem tag ou release
+
+As alterações abaixo foram publicadas em commits de desenvolvimento antes da
+primeira release de produto. Não houve uma release `v0.2.0` no GitHub.
 
 ### Fixed — atualização de instalações existentes
 
