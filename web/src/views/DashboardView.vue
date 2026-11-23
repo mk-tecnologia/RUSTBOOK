@@ -5,6 +5,7 @@ import { useAsyncTask } from '../composables/useAsyncTask'
 import { useAuthStore } from '../stores/auth'
 import { api } from '../api/client'
 import { useAddressBookStore } from '../stores/addressBook'
+import ServerHealthCard from '../components/server/ServerHealthCard.vue'
 
 const abStore = useAddressBookStore()
 const auth = useAuthStore()
@@ -73,11 +74,13 @@ const statCards = [
       </div>
     </div>
 
+    <ServerHealthCard v-if="auth.isAdmin" />
+
     <!-- Quick info -->
     <div class="bg-white dark:bg-rd-card border border-gray-200 dark:border-rd-border rounded-xl p-6">
       <h2 class="text-sm font-semibold text-gray-900 dark:text-rd-text mb-3">Getting Started</h2>
       <div class="text-sm text-gray-600 dark:text-rd-text-secondary space-y-2">
-        <p>1. Configure your RustDesk client to use this server's address on port 21114.</p>
+        <p>1. Copy the server addresses and public Key from <router-link to="/client-setup" class="text-rd-primary hover:underline">Client setup</router-link> into your RustDesk client's network settings.</p>
         <p>2. Log in with your credentials from the RustDesk client.</p>
         <p>3. Your address book will sync automatically between the client and this server.</p>
         <p>4. Use the <router-link to="/address-book" class="text-rd-primary hover:underline">Address Book</router-link> page to manage peers and tags from the web.</p>

@@ -14,3 +14,5 @@ export const saveServerSettings = (settings: ServerSettings) => api<ServerReport
 export const checkServerSettings = () => api<Record<string, string>>('/api/admin/server-settings/check', { method: 'POST' })
 export const applyRelay = (revision: string) => api<{ ok: boolean; changed: boolean; restarted?: boolean; relay: string; keys_preserved: boolean; notice?: string }>('/api/admin/server-settings/apply-relay', { method: 'POST', body: JSON.stringify({ revision }) })
 export const getClientConfiguration = () => api<ClientConfiguration>('/api/client-configuration')
+export interface ServerHealth { report: ServerReport; checks: Record<string, string> }
+export const getServerHealth = () => api<ServerHealth>('/api/admin/server-status')

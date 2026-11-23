@@ -16,6 +16,7 @@ use tokio::{
 pub fn routes() -> Router<AppState> {
     Router::new()
         .route("/api/admin/server-settings", get(read).put(save))
+        .route("/api/admin/server-status", get(health))
         .route("/api/admin/server-settings/check", post(check))
         .route("/api/admin/server-settings/apply-relay", post(apply))
         .route("/api/client-configuration", get(clients))
@@ -340,29 +341,60 @@ async fn tcp(endpoint: &str) -> &'static str {
         _ => "unreachable",
     }
 }
+async fn presence_check(endpoint: &str) -> &'static str {
+    if endpoint.is_empty() {
+        "not_configured"
+    } else if crate::presence::query(endpoint, &["rustbook-presence-check".into()])
+        .await
+        .is_ok()
+    {
+        "protocol_replied"
+    } else {
+        "unreachable"
+    }
+}
+async fn diagnostics(settings: &Settings) -> Value {
+    let api_endpoint = settings
+        .api_url
+        .parse::<axum::http::Uri>()
+        .ok()
+        .and_then(|uri| {
+            Some(format!(
+                "{}:{}",
+                uri.host()?,
+                uri.port_u16()
+                    .unwrap_or(if uri.scheme_str() == Some("https") {
+                        443
+                    } else {
+                        80
+                    })
+            ))
+        })
+        .unwrap_or_default();
+    let (id, relay, presence, api) = tokio::join!(
+        tcp(&settings.id_server),
+        tcp(&settings.relay_server),
+        presence_check(&settings.presence_server),
+        tcp(&api_endpoint)
+    );
+    json!({"id_server":id,"relay_server":relay,"presence_server":presence,"api_url":api,
+        "revision":settings.revision,"notice":"TCP reachability does not validate relay authentication, TLS or a connection between external clients."})
+}
 async fn check(
     State(state): State<AppState>,
     AuthUser(claims): AuthUser,
 ) -> Result<Json<Value>, ApiError> {
     admin(&claims)?;
+    Ok(Json(diagnostics(&load(&state).await?).await))
+}
+async fn health(
+    State(state): State<AppState>,
+    AuthUser(claims): AuthUser,
+) -> Result<Json<Value>, ApiError> {
+    admin(&claims)?;
     let settings = load(&state).await?;
-    let (id, relay) = tokio::join!(tcp(&settings.id_server), tcp(&settings.relay_server));
-    let presence = if settings.presence_server.is_empty() {
-        "not_configured"
-    } else if crate::presence::query(
-        &settings.presence_server,
-        &["rustbook-presence-check".into()],
-    )
-    .await
-    .is_ok()
-    {
-        "protocol_replied"
-    } else {
-        "unreachable"
-    };
-    Ok(Json(
-        json!({"id_server":id,"relay_server":relay,"presence_server":presence,"notice":"TCP reachability does not validate relay authentication or a connection between external clients."}),
-    ))
+    let (report, checks) = tokio::join!(report(&state, settings.clone()), diagnostics(&settings));
+    Ok(Json(json!({"report":report,"checks":checks})))
 }
 #[derive(Deserialize)]
 struct Apply {

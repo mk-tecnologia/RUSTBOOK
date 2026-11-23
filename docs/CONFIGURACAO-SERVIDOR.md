@@ -111,3 +111,16 @@ A cópia também dispõe de alternativa para navegadores em HTTP de rede local.
 
 A senha remota continua sendo a senha do RustDesk do computador de destino.
 Para a limitação de conta nativa com hbbs OSS, veja [compatibilidade](COMPATIBILIDADE-RUSTDESK.md).
+
+## Estado no dashboard (0.7.1+)
+
+O box **Estado do servidor**, visível aos administradores, consulta automaticamente
+os endereços salvos ao abrir o dashboard. **Verificar agora** atualiza os resultados
+e o horário da consulta; não altera nem reinicia serviços.
+
+O box distingue campos ausentes, portas TCP acessíveis, falhas de resposta, protocolo
+de presença respondendo, Key comparada com o hbbs e relay ativo/persistido ou pendente.
+Sem agente, o estado do hbbs e a comparação de chave permanecem sem confirmação.
+A API atual respondendo não comprova acesso pela URL pública configurada nos clientes;
+essa URL é testada somente a conexão TCP a partir do container da agenda.
+TLS, autenticação do relay e acesso externo exigem validação entre clientes reais.

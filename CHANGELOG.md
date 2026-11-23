@@ -7,6 +7,15 @@ manifesto upstream é `0.1.0`; não são inventadas releases anteriores do upstr
 
 Sem alterações pendentes.
 
+## [0.7.1] - 2026-11-23
+
+- Box administrativo no dashboard com estado da agenda, ID, relay, API dos clientes,
+  presença, Key e hbbs, com identificação de campos ausentes, erros e relay pendente.
+- Verificação ao abrir o dashboard e botão para atualizar os resultados, com horário
+  da consulta e acesso direto à configuração do servidor.
+- Consultas TCP/presença e estado do agente a partir de uma mesma configuração salva;
+  resultados não afirmam autenticação, TLS ou funcionamento de conexões externas.
+
 ## [0.7.0] - 2026-11-23
 
 - Painel administrativo unificado para ID público, relay anunciado, API, presença

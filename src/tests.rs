@@ -22,6 +22,61 @@ struct Fixture {
     member: String,
     outsider: String,
 }
+
+#[tokio::test]
+async fn dashboard_server_health_requires_admin_and_checks_one_saved_snapshot() {
+    let f = Fixture::new().await;
+    assert_eq!(
+        f.call("GET", "/api/admin/server-status", "", Value::Null)
+            .await
+            .0,
+        StatusCode::UNAUTHORIZED
+    );
+    assert_eq!(
+        f.call("GET", "/api/admin/server-status", &f.member, Value::Null)
+            .await
+            .0,
+        StatusCode::FORBIDDEN
+    );
+    let (status, initial) = f
+        .call("GET", "/api/admin/server-status", &f.admin, Value::Null)
+        .await;
+    assert_eq!(status, StatusCode::OK);
+    for field in ["id_server", "relay_server", "api_url", "presence_server"] {
+        assert_eq!(initial["checks"][field], "not_configured");
+    }
+    assert_eq!(initial["report"]["agent"]["connected"], false);
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let endpoint = listener.local_addr().unwrap().to_string();
+    let closed = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let unreachable = closed.local_addr().unwrap().to_string();
+    drop(closed);
+    let mut settings = initial["report"]["settings"].clone();
+    settings["id_server"] = json!(endpoint);
+    settings["relay_server"] = json!(unreachable);
+    settings["api_url"] = json!(format!("http://{endpoint}"));
+    settings["public_key"] = json!("AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=");
+    let (status, saved) = f
+        .call("PUT", "/api/admin/server-settings", &f.admin, settings)
+        .await;
+    assert_eq!(status, StatusCode::OK);
+    let (status, health) = f
+        .call("GET", "/api/admin/server-status", &f.admin, Value::Null)
+        .await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(health["checks"]["id_server"], "tcp_reachable");
+    assert_eq!(health["checks"]["api_url"], "tcp_reachable");
+    assert_eq!(health["checks"]["relay_server"], "unreachable");
+    assert_eq!(health["checks"]["revision"], saved["settings"]["revision"]);
+    assert_eq!(
+        health["checks"]["revision"],
+        health["report"]["settings"]["revision"]
+    );
+    assert!(health["checks"]["notice"]
+        .as_str()
+        .unwrap()
+        .contains("does not validate"));
+}
 impl Fixture {
     async fn new() -> Self {
         let db = SqlitePoolOptions::new()
