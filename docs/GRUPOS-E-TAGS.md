@@ -94,3 +94,20 @@ simples no aplicativo RustDesk 1.5.3 com hbbs OSS, sair da conta em
 **Configurações → Conta → Logout** evita o fluxo de handshake com o token da agenda.
 Outra opção no cliente é informar `ID@servidor:porta?key=CHAVE_PUBLICA` no campo de
 conexão. Não remova a Key para contornar o erro e não altere a senha do peer.
+
+## Layout e pesquisa de tags (0.6.2+)
+
+Os boxes de presença, conexões e filtro de tags compartilham uma grade responsiva;
+em telas estreitas são empilhados. A lista usa a largura disponível, com colunas
+alinhadas entre grupos e rolagem horizontal em telas pequenas.
+
+Abra o seletor de tags e digite para pesquisar. A busca ignora acentos e diferenças
+de maiúsculas/minúsculas. No cadastro/edição, várias tags podem ser selecionadas;
+a busca não altera as seleções anteriores. Use as setas e Enter para escolher,
+Escape para fechar a lista e Done para concluir a multisseleção. A lista tem altura
+limitada e rolagem própria; novas tags continuam podendo ser criadas no formulário.
+Para excluir uma tag, selecione-a no filtro e use o ícone de lixeira do box Tags.
+
+As linhas mostram até duas tags e um contador das demais; o tooltip e a edição
+permitem consultar os nomes completos. Presença Offline reflete a resposta do hbbs
+para o ID cadastrado; confira todos os dígitos se outro ID conecta no cliente.

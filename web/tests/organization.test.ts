@@ -25,7 +25,7 @@ test('device folders show full counts and tag filters hide empty folders', async
     store.$patch({ abGuid: 'fixture', overviewReady: true, totalPeers: 3, ungroupedCount: 1, groups, tags })
     const app = createSSRApp(View); app.use(pinia)
     const html = await renderToString(app)
-    for (const text of ['BR SUL', 'CCS', 'Ungrouped', 'Production', 'New group', '3 devices']) assert.ok(html.includes(text), text)
+    for (const text of ['BR SUL', 'CCS', 'Ungrouped', 'All tags', 'New group', '3 devices']) assert.ok(html.includes(text), text)
     store.query = 'Office'
     const filteredApp = createSSRApp(View); filteredApp.use(pinia)
     const filtered = await renderToString(filteredApp)
@@ -39,7 +39,8 @@ test('editing a peer retains its ID, folder and selected tags in the form', asyn
   const app = createSSRApp(Editor, { peer, groups, tags, createTag: async () => {}, busy: false })
   const html = await renderToString(app)
   assert.ok(html.includes('Edit device'))
-  assert.match(html, /<input(?=[^>]*value="Production")(?=[^>]*checked)[^>]*>/)
+  assert.match(html, /id="peer-tags"[^>]*aria-label="Device tags"/ )
+  assert.ok(html.includes('title="Production">Production</span>'))
   assert.match(html, /value="1"[^>]*selected/)
   assert.match(html, /id="peer-id"[^>]*readonly/)
   assert.ok(html.includes('Office PC'))

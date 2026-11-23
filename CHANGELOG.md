@@ -7,6 +7,18 @@ manifesto upstream é `0.1.0`; não são inventadas releases anteriores do upstr
 
 Sem alterações pendentes.
 
+## [0.6.2] - 2026-11-23
+
+- Boxes de presença, conexões nativas e tags lado a lado, com grade responsiva
+  e aproveitamento da largura completa para a lista de dispositivos.
+- Seletores de tags com busca durante a digitação, sem distinção de maiúsculas
+  ou acentos, no filtro da agenda e no cadastro/edição de dispositivos.
+- Multisseleção compacta com contagem, limpeza e preservação das tags escolhidas.
+- Dropdown com rolagem limitada, navegação por teclado e posicionamento dentro
+  da área visível, inclusive nas janelas de cadastro.
+- Colunas de dispositivos com larguras comuns entre grupos e espaço reservado
+  para status e ações. Nomes/tags longos usam reticências e tooltip.
+
 ## [0.6.1] - 2026-11-21
 
 - Configuração por instalação do servidor de ID e da chave pública para conexões

@@ -29,10 +29,10 @@ async function save(reset = false) {
 onMounted(load)
 </script>
 <template>
-  <div v-if="settings || loadError">
-    <div v-if="settings" class="flex flex-wrap items-center justify-between gap-3 rounded-xl border px-4 py-3 text-sm" :class="settings.status === 'connected' ? 'border-gray-200 bg-white dark:border-rd-border dark:bg-rd-card' : 'border-amber-200 bg-amber-50 dark:border-amber-900/60 dark:bg-amber-950/20'">
-      <div><p class="font-medium text-gray-800 dark:text-rd-text">{{ settings.status === 'connected' ? 'Live presence connected' : settings.status === 'not_configured' ? 'Configure live presence' : 'ID server unavailable' }}</p><p class="mt-0.5 text-xs text-gray-500 dark:text-rd-text-secondary">{{ settings.status === 'connected' ? `ID server: ${settings.server}` : settings.status === 'not_configured' ? 'Select your RustDesk ID server to show confirmed Online/Offline status.' : `Unable to query ${settings.server}. Device presence remains unknown.` }}</p></div>
-      <button type="button" class="ui-button" @click="open">Presence settings</button>
+  <div v-if="settings || loadError" class="min-w-0">
+    <div v-if="settings" class="flex h-full min-w-0 flex-col items-start justify-between gap-3 rounded-xl border p-4 text-sm" :class="settings.status === 'connected' ? 'border-gray-200 bg-white dark:border-rd-border dark:bg-rd-card' : 'border-amber-200 bg-amber-50 dark:border-amber-900/60 dark:bg-amber-950/20'">
+      <div class="w-full min-w-0"><p class="font-medium text-gray-800 dark:text-rd-text">{{ settings.status === 'connected' ? 'Live presence connected' : settings.status === 'not_configured' ? 'Configure live presence' : 'ID server unavailable' }}</p><p class="mt-1 truncate text-xs text-gray-500 dark:text-rd-text-secondary">{{ settings.status === 'connected' ? `ID server: ${settings.server}` : settings.status === 'not_configured' ? 'Select your RustDesk ID server to show confirmed Online/Offline status.' : `Unable to query ${settings.server}. Device presence remains unknown.` }}</p></div>
+      <button type="button" class="ui-button !px-3 !py-1.5 !text-xs" @click="open">Presence settings</button>
     </div>
     <ErrorNotice v-else :message="loadError" retry @retry="load" />
     <BaseDialog v-if="opened" title="Live presence" :busy="busy" @close="opened = false">

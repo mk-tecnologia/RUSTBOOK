@@ -1,7 +1,8 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
 import type { Peer, PeerForm, PeerGroup, Tag } from '../../api/addressBook'
-import { tagColor, tagHex } from '../../utils/colors'
+import { tagColor } from '../../utils/colors'
+import TagSelect from '../tags/TagSelect.vue'
 import BaseDialog from '../ui/BaseDialog.vue'
 import ErrorNotice from '../ui/ErrorNotice.vue'
 
@@ -57,11 +58,11 @@ function submit() {
         </div>
         <div>
           <label for="peer-platform" class="mb-1 block text-xs font-medium">Platform</label>
-          <select id="peer-platform" v-model="form.platform" class="peer-input"><option v-for="item in platforms" :key="item" :value="item">{{ item || 'Unknown platform' }}</option></select>
+          <select id="peer-platform" v-model="form.platform" class="peer-input h-10"><option v-for="item in platforms" :key="item" :value="item">{{ item || 'Unknown platform' }}</option></select>
         </div>
         <div>
           <label for="peer-group" class="mb-1 block text-xs font-medium">Device group</label>
-          <select id="peer-group" v-model="form.group_id" class="peer-input">
+          <select id="peer-group" v-model="form.group_id" class="peer-input h-10">
             <option :value="null">Ungrouped</option>
             <option v-for="group in groups" :key="group.id" :value="group.id">{{ group.name }}</option>
           </select>
@@ -69,13 +70,7 @@ function submit() {
       </div>
       <fieldset class="rounded-xl border border-gray-200 p-3 dark:border-rd-border">
         <legend class="px-1 text-xs font-medium">Tags <span class="font-normal text-gray-400">· choose multiple</span></legend>
-        <div v-if="tags.length" class="mb-3 flex max-h-32 flex-wrap gap-2 overflow-y-auto p-0.5">
-          <label v-for="tag in tags" :key="tag.name" class="flex cursor-pointer items-center gap-2 rounded-lg border px-2.5 py-1.5 text-xs transition-colors" :class="form.tags.includes(tag.name) ? 'border-rd-primary bg-rd-primary/5 dark:bg-rd-primary/10' : 'border-gray-200 dark:border-rd-border'">
-            <input v-model="form.tags" type="checkbox" :value="tag.name" class="accent-rd-primary">
-            <span class="size-2 shrink-0 rounded-full" :style="{ backgroundColor: tagHex(tag.color) }" />{{ tag.name }}
-          </label>
-        </div>
-        <p v-else class="mb-3 text-xs text-gray-500">Create your first tag below to label this device.</p>
+        <div class="mb-3"><TagSelect id="peer-tags" v-model="form.tags" :tags="tags" multiple :disabled="busy || creatingTag" label="Device tags" placeholder="Choose tags…" /></div>
         <div class="flex items-center gap-2">
           <input v-model="color" type="color" aria-label="New tag color" class="size-9 shrink-0 cursor-pointer rounded border border-gray-200 bg-transparent p-1 dark:border-rd-border">
           <input v-model="tagName" aria-label="New tag name" maxlength="128" class="peer-input min-w-0 flex-1" placeholder="New tag…" @keydown.enter.prevent="addTag">

@@ -29,10 +29,12 @@ async function save() {
 onMounted(load)
 </script>
 <template>
-  <div v-if="settings?.can_edit" class="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-gray-200 bg-white px-4 py-3 dark:border-rd-border dark:bg-rd-card">
-    <div><p class="text-sm font-medium">Native connections</p><p class="mt-0.5 text-xs text-gray-500 dark:text-rd-text-secondary">{{ settings.server ? `ID server: ${settings.server} · public key configured` : 'Configure the ID server and public Key for hbbs OSS connections while signed in.' }}</p></div><button type="button" class="ui-button" @click="open">Connection settings</button>
+  <div v-if="settings?.can_edit || (error && !settings)" class="min-w-0">
+  <div v-if="settings?.can_edit" class="flex h-full min-w-0 flex-col items-start justify-between gap-3 rounded-xl border border-gray-200 bg-white p-4 dark:border-rd-border dark:bg-rd-card">
+    <div class="w-full min-w-0"><p class="text-sm font-medium">Native connections</p><p class="mt-1 line-clamp-2 text-xs text-gray-500 dark:text-rd-text-secondary">{{ settings.server ? `ID server: ${settings.server} · public key configured` : 'Configure the ID server and public Key for hbbs OSS connections while signed in.' }}</p></div><button type="button" class="ui-button !px-3 !py-1.5 !text-xs" @click="open">Connection settings</button>
   </div>
-  <ErrorNotice v-if="error && !opened" :message="error" retry @retry="load" />
+  <ErrorNotice v-if="error && !settings" :message="error" retry @retry="load" />
+  </div>
   <BaseDialog v-if="opened" title="Native connections" :busy="busy" @close="opened = false">
     <form class="space-y-4" @submit.prevent="save">
       <ErrorNotice :message="error" />

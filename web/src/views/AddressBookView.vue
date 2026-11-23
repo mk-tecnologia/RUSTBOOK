@@ -80,12 +80,14 @@ async function clearFilters() { search.value = ''; clearTimeout(timer); await st
         <button type="button" :disabled="saving || !store.abGuid" class="flex items-center gap-2 rounded-lg bg-rd-primary px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-rd-primary-hover disabled:opacity-50" @click="addPeer()"><svg aria-hidden="true" class="size-4" fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24"><path stroke-linecap="round" d="M12 5v14M5 12h14" /></svg>Add device</button>
       </div>
     </div>
-    <PresenceSettings @changed="store.refresh" />
-    <ConnectionSettings @changed="connection = $event" />
+    <div class="grid items-stretch gap-4" style="grid-template-columns: repeat(auto-fit, minmax(min(100%, 16rem), 1fr))">
+      <PresenceSettings @changed="store.refresh" />
+      <ConnectionSettings @changed="connection = $event" />
+      <TagPanel :tags="store.tags" :selected-tag="store.selectedTag" :busy="saving || !store.abGuid" @select="selectTag" @create="editOrganization('tag')" @delete="removeTag" />
+    </div>
     <ErrorNotice :message="actionError" />
     <ErrorNotice :message="store.error" retry @retry="store.init" />
-    <div class="flex flex-col gap-5 lg:flex-row">
-      <aside class="shrink-0 lg:w-52"><div class="rounded-xl border border-gray-200 bg-white p-3 dark:border-rd-border dark:bg-rd-card"><TagPanel :tags="store.tags" :selected-tag="store.selectedTag" :busy="saving || !store.abGuid" @select="selectTag" @create="editOrganization('tag')" @delete="removeTag" /></div></aside>
+    <div>
       <section aria-label="Device groups" class="min-w-0 flex-1">
         <div class="mb-3 flex flex-wrap items-center justify-between gap-3">
           <div class="flex items-center gap-2 text-xs text-gray-500 dark:text-rd-text-secondary"><span class="tabular-nums">{{ store.totalPeers }} devices</span><span aria-hidden="true">·</span><span>{{ store.groups.length }} groups</span><span v-if="store.loading" role="status" class="text-rd-primary">Updating…</span></div>
