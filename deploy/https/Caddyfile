@@ -1,0 +1,3 @@
+{$RUSTBOOK_HTTPS_DOMAIN} {
+	reverse_proxy {$RUSTBOOK_HTTPS_UPSTREAM}
+}

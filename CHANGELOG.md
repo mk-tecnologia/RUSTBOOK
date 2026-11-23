@@ -7,6 +7,15 @@ manifesto upstream é `0.1.0`; não são inventadas releases anteriores do upstr
 
 Sem alterações pendentes.
 
+## [0.7.2] - 2026-11-23
+
+- Atalhos contextuais nas pendências do dashboard, abrindo e focando o campo ou
+  seção necessária: agente, Key, relay, API, presença e aplicação do relay.
+- Atalho Configurar HTTPS e instruções no painel distinguindo endereço salvo,
+  ativação de TLS no proxy e bloqueio do acesso HTTP direto.
+- Modelo opcional Caddy/Compose separado, com certificados persistentes, e guia
+  para migração HTTPS, validação e restrição da porta 21114 sem alterar hbbs/hbbr.
+
 ## [0.7.1] - 2026-11-23
 
 - Box administrativo no dashboard com estado da agenda, ID, relay, API dos clientes,

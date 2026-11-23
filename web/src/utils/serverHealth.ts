@@ -2,6 +2,21 @@ import type { ServerHealth } from '../api/serverSettings'
 
 export type HealthState = 'ok' | 'warning' | 'error' | 'missing'
 export interface HealthItem { key: string; label: string; state: HealthState; status: string; detail: string }
+export function serverHealthAction(key: string, health: ServerHealth) {
+  const { settings, agent } = health.report
+  let target = ({ id_server: 'server-id', relay_server: 'server-relay', api_url: 'server-api', presence_server: 'server-presence' } as Record<string, string>)[key]
+  let label = 'Revisar configuração'
+  if (key === 'agent') { target = 'server-agent'; label = agent.connected ? 'Revisar agente' : 'Ativar agente' }
+  if (key === 'key') {
+    const needsAgent = Boolean(settings.public_key && !agent.public_key)
+    target = needsAgent ? 'server-agent' : 'server-key'; label = needsAgent ? 'Ativar agente e comparar' : 'Conferir chave'
+  }
+  if (key === 'relay_applied') {
+    target = !settings.relay_server ? 'server-relay' : !agent.connected ? 'server-agent' : 'server-apply-relay'
+    label = !settings.relay_server ? 'Configurar relay' : !agent.connected ? 'Ativar agente' : 'Conferir aplicação'
+  }
+  return { label, to: `/server-settings#${target || 'server-agent'}` }
+}
 export function serverHealthItems({ report, checks }: ServerHealth): HealthItem[] {
   const { settings, agent } = report
   const items: HealthItem[] = [{ key: 'application', label: 'Agenda / API atual', state: 'ok', status: 'Respondendo', detail: 'A agenda respondeu à verificação autenticada.' }]

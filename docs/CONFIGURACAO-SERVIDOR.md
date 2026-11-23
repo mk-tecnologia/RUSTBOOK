@@ -124,3 +124,7 @@ Sem agente, o estado do hbbs e a comparação de chave permanecem sem confirmaç
 A API atual respondendo não comprova acesso pela URL pública configurada nos clientes;
 essa URL é testada somente a conexão TCP a partir do container da agenda.
 TLS, autenticação do relay e acesso externo exigem validação entre clientes reais.
+
+Na versão 0.7.2+, cada pendência do dashboard oferece um atalho para o campo ou
+seção necessária; o campo recebe foco após o carregamento. O aviso HTTP também
+leva a **Configurar HTTPS**, com instruções e link ao [guia de implantação](HTTPS.md).

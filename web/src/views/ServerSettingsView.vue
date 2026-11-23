@@ -1,5 +1,6 @@
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue'
+import { computed, nextTick, onMounted, ref, watch } from 'vue'
+import { useRoute } from 'vue-router'
 import { applyRelay, checkServerSettings, getServerSettings, saveServerSettings, type ServerReport, type ServerSettings } from '../api/serverSettings'
 import ClientConfigurationPanel from '../components/server/ClientConfigurationPanel.vue'
 import ErrorNotice from '../components/ui/ErrorNotice.vue'
@@ -11,9 +12,19 @@ const error = ref('')
 const notice = ref('')
 const diagnostics = ref<Record<string,string>>()
 const confirming = ref(false)
+const route = useRoute()
+async function focusSection() {
+  await nextTick()
+  const target = document.getElementById(route.hash.slice(1))
+  if (!target || !route.hash) return
+  target.scrollIntoView({ block: 'center', behavior: 'smooth' })
+  target.focus({ preventScroll: true })
+}
+watch(() => route.hash, focusSection)
+function editApi() { document.getElementById('server-api')?.focus() }
 const dirty = computed(() => JSON.stringify(form.value) !== JSON.stringify(report.value?.settings))
 const pending = computed(() => Boolean(report.value?.settings.relay_server && (report.value.settings.relay_server !== report.value.agent.relay || report.value.settings.relay_server !== report.value.agent.configured_relay)))
-async function load() { error.value = ''; try { report.value = await getServerSettings(); form.value = { ...report.value.settings } } catch (e) { error.value = e instanceof Error ? e.message : 'Unable to load settings' } }
+async function load() { error.value = ''; try { report.value = await getServerSettings(); form.value = { ...report.value.settings }; await focusSection() } catch (e) { error.value = e instanceof Error ? e.message : 'Unable to load settings' } }
 async function save() {
   if (!form.value || busy.value) return
   busy.value = true; error.value = ''; notice.value = ''
@@ -57,15 +68,23 @@ onMounted(load)
         <div class="mt-5 flex flex-wrap justify-end gap-2 border-t border-gray-100 pt-4 dark:border-rd-border"><button type="button" :disabled="busy" class="ui-button" @click="load">Recarregar</button><button type="submit" :disabled="busy || !dirty" class="rounded-lg bg-rd-primary px-4 py-2 text-sm font-medium text-white disabled:opacity-50">{{ busy ? 'Aguarde…' : 'Salvar configuração' }}</button></div>
       </form>
       <ul v-if="report.warnings.length" class="space-y-1 rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-800 dark:border-amber-900 dark:bg-amber-950/20 dark:text-amber-300"><li v-for="warning in report.warnings" :key="warning">{{ warning }}</li></ul>
-      <section class="rounded-xl border border-gray-200 bg-white p-5 dark:border-rd-border dark:bg-rd-card">
+      <section id="server-agent" tabindex="-1" class="scroll-mt-6 rounded-xl border border-gray-200 bg-white p-5 dark:border-rd-border dark:bg-rd-card">
         <div class="flex flex-wrap items-start justify-between gap-3"><div><h2 class="font-semibold">Aplicação no hbbs</h2><p class="mt-1 text-sm text-gray-500 dark:text-rd-text-secondary">Salvar a agenda e aplicar o relay são etapas separadas.</p></div><span class="rounded-full px-3 py-1 text-xs" :class="report.agent.connected && report.agent.running && report.settings.relay_server && !pending ? 'bg-green-100 text-green-700 dark:bg-green-900/20 dark:text-green-300' : 'bg-amber-100 text-amber-800 dark:bg-amber-900/20 dark:text-amber-300'">{{ !report.agent.connected ? 'Agente não conectado' : !report.agent.running ? 'hbbs não está em execução' : !report.settings.relay_server ? 'Relay não configurado' : pending ? 'Relay pendente de aplicação' : 'Relay corresponde ao salvo' }}</span></div>
         <dl class="mt-4 grid gap-3 text-sm sm:grid-cols-2"><div><dt class="text-xs text-gray-500">Relay salvo</dt><dd class="mt-1 break-all font-mono">{{ report.settings.relay_server || 'Não configurado' }}</dd></div><div><dt class="text-xs text-gray-500">Relay anunciado pelo hbbs</dt><dd class="mt-1 break-all font-mono">{{ report.agent.relay || 'Sem confirmação do agente' }}</dd></div><div><dt class="text-xs text-gray-500">Relay persistido no Compose</dt><dd class="mt-1 break-all font-mono">{{ report.agent.configured_relay || 'Sem confirmação do agente' }}</dd></div></dl>
         <div v-if="!report.agent.connected" class="mt-4 rounded-lg bg-gray-50 p-3 text-xs dark:bg-rd-scaffold"><p>Ative o agente uma vez no host Docker. Ajuste o caminho do Compose existente:</p><code class="mt-2 block overflow-x-auto whitespace-pre-wrap break-all">curl -fsSL https://raw.githubusercontent.com/mk-tecnologia/RUSTBOOK/main/scripts/install.py | python3 - install latest --manage-hbbs /CAMINHO/DO/compose.yml</code><p class="mt-2 text-gray-500">A instalação do agente não reinicia hbbs/hbbr. Depois, recarregue este painel.</p></div>
         <p v-else-if="!report.agent.can_apply" class="mt-3 text-sm text-amber-700 dark:text-amber-400">{{ report.agent.error || 'O agente não confirmou o serviço em execução e o volume da chave. A aplicação está bloqueada.' }}</p>
-        <div class="mt-4 flex flex-wrap gap-2"><button type="button" :disabled="busy || dirty || !report.agent.can_apply || !report.settings.relay_server" class="ui-button" @click="confirming = true">Aplicar relay ao hbbs</button><button type="button" :disabled="busy || dirty" class="ui-button" @click="test">Testar conectividade salva</button></div>
+        <div id="server-apply-relay" tabindex="-1" class="mt-4 flex scroll-mt-6 flex-wrap gap-2"><button type="button" :disabled="busy || dirty || !report.agent.can_apply || !report.settings.relay_server" class="ui-button" @click="confirming = true">Aplicar relay ao hbbs</button><button type="button" :disabled="busy || dirty" class="ui-button" @click="test">Testar conectividade salva</button></div>
         <p v-if="report.agent.compose_file" class="mt-3 break-all text-xs text-gray-500">Serviço: {{ report.agent.service }} · Compose: {{ report.agent.compose_file }}</p>
         <p v-if="dirty" class="mt-2 text-xs text-amber-700 dark:text-amber-400">Salve ou recarregue suas alterações antes de testar/aplicar.</p>
         <div v-if="diagnostics" class="mt-4"><dl class="grid gap-3 sm:grid-cols-3"><div v-for="key in ['id_server','relay_server','presence_server']" :key="key"><dt class="text-xs text-gray-500">{{ labels[key] }}</dt><dd class="mt-1 text-sm">{{ results[diagnostics[key] || ''] || diagnostics[key] }}</dd></div></dl><p class="mt-3 text-xs text-gray-500">Porta TCP acessível não comprova autenticação do relay. Valide uma conexão entre clientes externos.</p></div>
+      </section>
+      <section id="server-https" tabindex="-1" class="scroll-mt-6 rounded-xl border border-gray-200 bg-white p-5 dark:border-rd-border dark:bg-rd-card">
+        <h2 class="font-semibold">HTTPS para a agenda e API</h2>
+        <p class="mt-2 text-sm text-gray-500 dark:text-rd-text-secondary">O campo Servidor da API informa o endereço aos clientes; ele não instala certificados nem ativa TLS no host.</p>
+        <ol class="mt-4 list-inside list-decimal space-y-2 text-sm"><li>Configure um proxy HTTPS no host (ou no proxy já existente), com certificado válido para seu domínio e encaminhamento à agenda na porta 21114.</li><li>Libere/encaminhe a porta 443 para esse proxy. Se o certificado usar validação HTTP, encaminhe também a porta 80.</li><li>Teste https://SEU-DOMINIO/api/version sem ignorar erros de certificado.</li><li>Só depois salve https://SEU-DOMINIO no campo Servidor da API e atualize os clientes RustDesk.</li><li>Restrinja a porta 21114 ao proxy e remova seu acesso externo direto. Configure a porta 80 para redirecionar ao HTTPS ou recusá-la, conforme a emissão/renovação do certificado.</li></ol>
+        <p class="mt-3 text-xs text-gray-500 dark:text-rd-text-secondary">O proxy pode usar HTTP internamente na máquina. Para um proxy instalado no mesmo host, publique a agenda em 127.0.0.1:21114; um proxy em outro container precisa de uma rede Docker compartilhada. As portas de ID/relay 21115–21117 continuam com seus protocolos próprios.</p>
+        <a href="https://github.com/mk-tecnologia/RUSTBOOK/blob/main/docs/HTTPS.md" target="_blank" rel="noopener noreferrer" class="mt-3 inline-block text-sm font-medium text-rd-primary hover:underline">Abrir guia de implantação HTTPS</a>
+        <button type="button" class="ui-button mt-4" @click="editApi">Editar endereço da API</button>
       </section>
       <ClientConfigurationPanel :configuration="{ ...report.settings, can_edit: true }" />
       <details class="rounded-xl border border-gray-200 bg-white p-5 dark:border-rd-border dark:bg-rd-card"><summary class="cursor-pointer text-sm font-medium">Parâmetros ativos da agenda (somente leitura)</summary><dl class="mt-4 grid gap-4 text-sm sm:grid-cols-2"><div><dt>Porta HTTP interna</dt><dd>{{ report.runtime.port }}</dd></div><div><dt>Expiração de sessão</dt><dd>{{ report.runtime.token_expiry_hours }} horas</dd></div><div><dt>Origens CORS</dt><dd class="break-all">{{ report.runtime.cors_origins.join(', ') || 'Mesma origem' }}</dd></div><div><dt>Eventos de dispositivos sem login</dt><dd>{{ report.runtime.anonymous_device_events ? 'Habilitados' : 'Desabilitados' }}</dd></div></dl><p class="mt-3 text-xs text-gray-500">Portas publicadas, firewall, TLS, credenciais administrativas e políticas da agenda continuam na implantação do host.</p></details>

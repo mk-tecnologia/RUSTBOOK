@@ -80,6 +80,7 @@ As orientações de `BIND_IP` abaixo se aplicam a instalações novas.
 O endereço padrão de uma instalação nova é `http://127.0.0.1:21114`. Configure um proxy HTTPS no host
 para encaminhar à porta 21114. Proxies em outro container precisam de configuração
 de rede própria; o loopback desse container não é o loopback do host.
+Veja o [guia HTTPS](HTTPS.md) para emissão de certificado, validação e bloqueio do acesso HTTP direto.
 
 Consulte as credenciais como root:
 

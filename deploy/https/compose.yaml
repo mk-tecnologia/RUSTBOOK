@@ -1,0 +1,18 @@
+# Optional HTTPS proxy for a Linux Docker host. Does not recreate RustDesk services.
+services:
+  https:
+    image: caddy:2-alpine
+    network_mode: host
+    environment:
+      RUSTBOOK_HTTPS_DOMAIN: "${RUSTBOOK_HTTPS_DOMAIN:?Set the public API hostname without protocol or port}"
+      RUSTBOOK_HTTPS_UPSTREAM: "${RUSTBOOK_HTTPS_UPSTREAM:?Set the existing address-book host:port}"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - certificates:/data
+      - configuration:/config
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+volumes:
+  certificates:
+  configuration:

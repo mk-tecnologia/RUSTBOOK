@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue'
 import { getServerHealth, type ServerHealth } from '../../api/serverSettings'
-import { serverHealthItems, serverHealthSummary } from '../../utils/serverHealth'
+import { serverHealthAction, serverHealthItems, serverHealthSummary } from '../../utils/serverHealth'
 const health = ref<ServerHealth>()
 const busy = ref(false)
 const error = ref('')
@@ -30,10 +30,11 @@ onMounted(refresh)
       <div class="my-5 flex flex-wrap items-center justify-between gap-3"><span role="status" class="rounded-full px-3 py-1 text-xs font-medium" :class="colors[summary.state as keyof typeof colors]">{{ summary.label }}</span><span class="text-xs text-gray-500">Verificado às {{ checkedAt }}</span></div>
       <dl class="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
         <div v-for="item in items" :key="item.key" class="min-w-0 rounded-lg border border-gray-100 p-3 dark:border-rd-border">
-          <dt class="mb-2 text-sm font-medium">{{ item.label }}</dt><dd><span class="inline-flex items-center gap-1.5 rounded-full px-2 py-1 text-xs" :class="colors[item.state]"><span aria-hidden="true" class="size-1.5 rounded-full bg-current" />{{ item.status }}</span><p class="mt-2 break-words text-xs leading-relaxed text-gray-500 dark:text-rd-text-secondary">{{ item.detail }}</p></dd>
+          <dt class="mb-2 text-sm font-medium">{{ item.label }}</dt><dd><span class="inline-flex items-center gap-1.5 rounded-full px-2 py-1 text-xs" :class="colors[item.state]"><span aria-hidden="true" class="size-1.5 rounded-full bg-current" />{{ item.status }}</span><p class="mt-2 break-words text-xs leading-relaxed text-gray-500 dark:text-rd-text-secondary">{{ item.detail }}</p><RouterLink v-if="item.state !== 'ok'" :to="serverHealthAction(item.key, health).to" class="mt-3 inline-flex items-center gap-1 text-xs font-medium text-rd-primary hover:underline">{{ serverHealthAction(item.key, health).label }} <span aria-hidden="true">→</span></RouterLink></dd>
         </div>
       </dl>
       <ul v-if="health.report.warnings.length" class="mt-4 list-inside list-disc space-y-1 text-xs text-amber-700 dark:text-amber-300"><li v-for="warning in health.report.warnings" :key="warning">{{ warning }}</li></ul>
+      <RouterLink v-if="health.report.settings.api_url.startsWith('http://')" to="/server-settings#server-https" class="mt-3 inline-flex items-center gap-1 text-xs font-medium text-rd-primary hover:underline">Configurar HTTPS <span aria-hidden="true">→</span></RouterLink>
       <p class="mt-4 text-xs leading-relaxed text-gray-500 dark:text-rd-text-secondary">As consultas partem da agenda. TCP acessível não confirma TLS, autenticação do relay ou acesso externo. Valide uma conexão real entre clientes externos após alterar a rede.</p>
     </template>
   </section>
