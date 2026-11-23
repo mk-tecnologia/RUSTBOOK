@@ -85,6 +85,15 @@ def compose_document(image):
     }}}
 
 
+AGENT_SOCKET = ".rustbook-server-agent.sock"
+
+
+def ignore_runtime_socket(directory, names):
+    return [name for name in names if name == AGENT_SOCKET
+            and not (Path(directory) / name).is_symlink()
+            and (Path(directory) / name).is_socket()]
+
+
 class Installer:
     def __init__(self, directory, build_locally=False, hbbs_server=None):
         self.root = directory.resolve()
@@ -286,6 +295,34 @@ class Installer:
                     raise RuntimeError("O diretório de dados não pode conter links simbólicos.")
                 os.chown(path, 10001, 10001)
 
+    def enable_server_management(self, compose_file=None, service="hbbs"):
+        config = self.root / "server-agent.json"
+        if compose_file is None:
+            if not config.exists():
+                return
+            current = json.loads(config.read_text())
+            compose_file = Path(current["files"][0])
+            service = current["service"]
+        script = self.root / "server-agent.py"
+        temporary = self.root / ".server-agent.new.py"
+        run("docker", "cp", CONTAINER + ":/app/server-agent.py", str(temporary))
+        compile(temporary.read_text(), str(script), "exec")
+        if config.exists() and script.exists() and temporary.read_bytes() == script.read_bytes():
+            current = json.loads(config.read_text())
+            if (str(compose_file.resolve()) in current["files"] and current["service"] == service
+                    and current.get("data") == str(self.data) and (self.data / AGENT_SOCKET).is_socket()):
+                try:
+                    run("systemctl", "is-active", "--quiet", "rustbook-server-agent.service")
+                    temporary.unlink()
+                    print("Agente do servidor já ativo; nenhuma reinicialização necessária.", flush=True)
+                    return
+                except subprocess.CalledProcessError:
+                    pass
+        os.chmod(temporary, 0o600)
+        temporary.replace(script)
+        run(sys.executable, str(script), "install", "--root", str(self.root), "--data", str(self.data),
+            "--compose", str(compose_file.resolve()), "--service", service)
+
     def credentials(self):
         if self.env.exists():
             return
@@ -332,7 +369,7 @@ class Installer:
         for path in (source / "data").rglob("*"):
             if path.is_symlink():
                 raise RuntimeError("A origem não pode conter links simbólicos.")
-        shutil.copytree(source / "data", self.data)
+        shutil.copytree(source / "data", self.data, ignore=ignore_runtime_socket)
         self.env.write_text(environment)
         os.chmod(self.env, 0o600)
         write_json(self.state_file, {})
@@ -342,12 +379,14 @@ class Installer:
         name = time.strftime("%Y%m%d-%H%M%S") + "-" + secrets.token_hex(3)
         destination = self.root / "backups" / name
         destination.mkdir(parents=True, mode=0o700)
-        shutil.copytree(self.data, destination / "data")
+        shutil.copytree(self.data, destination / "data", ignore=ignore_runtime_socket)
         for path in (self.env, self.config, self.state_file):
             if path.exists():
                 shutil.copy2(path, destination / path.name)
         ownership = {}
         for path in [self.data, *self.data.rglob("*")]:
+            if path.name == AGENT_SOCKET and path.is_socket() and not path.is_symlink():
+                continue
             if path.is_symlink():
                 raise RuntimeError("O diretório de dados não pode conter links simbólicos.")
             status = path.stat()
@@ -400,6 +439,9 @@ class Installer:
         failed = self.data.with_name(self.data.name + ".failed-" + backup.name)
         self.data.rename(failed)
         shutil.copytree(backup / "data", self.data)
+        runtime = failed / AGENT_SOCKET
+        if runtime.is_socket() and not runtime.is_symlink():
+            runtime.rename(self.data / AGENT_SOCKET)
         ownership = json.loads((backup / "ownership.json").read_text())
         for relative, owner in ownership.items():
             os.chown(self.data / relative, *owner)
@@ -476,6 +518,8 @@ def main():
                         help="Importar uma agenda isolada parada (diretório com data/ e .env).")
     parser.add_argument("--build", action="store_true", help="Compilar main localmente em vez de baixar imagem pronta.")
     parser.add_argument("--hbbs", metavar="HOST:PORT", help="Consultar presença no hbbs (porta NAT TCP, normalmente 21115); use '' para desativar.")
+    parser.add_argument("--manage-hbbs", type=Path, metavar="COMPOSE_FILE", help="Ativar aplicação de relay pelo painel para este Compose hbbs existente (sem reiniciar hbbs agora).")
+    parser.add_argument("--hbbs-service", default="hbbs", help="Serviço hbbs no Compose gerenciado.")
     args = parser.parse_args()
     if args.hbbs:
         from urllib.parse import urlsplit
@@ -508,6 +552,7 @@ def main():
         if args.import_from:
             installer.import_existing(args.import_from)
         installer.install()
+        installer.enable_server_management(args.manage_hbbs, args.hbbs_service)
 
 
 if __name__ == "__main__":

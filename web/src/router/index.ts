@@ -14,6 +14,8 @@ const router = createRouter({
       path: '/',
       component: () => import('../components/layout/AppLayout.vue'),
       children: [
+        { path: 'server-settings', name: 'server-settings', component: () => import('../views/ServerSettingsView.vue'), meta: { admin: true } },
+        { path: 'client-setup', name: 'client-setup', component: () => import('../views/ClientSetupView.vue') },
         {
           path: '',
           name: 'dashboard',

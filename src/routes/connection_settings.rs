@@ -62,8 +62,11 @@ async fn save(
             return Err(ApiError::BadRequest("Provide the hbbs public Key (32 bytes in Base64), never a private key or account token".into()));
         }
     }
+    let mut tx = state.db.begin().await?;
     sqlx::query("INSERT INTO server_settings(key,value) VALUES ('native_connection', ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value")
-        .bind(serde_json::to_string(&profile).map_err(|error| ApiError::Internal(error.to_string()))?).execute(&state.db).await?;
+        .bind(serde_json::to_string(&profile).map_err(|error| ApiError::Internal(error.to_string()))?).execute(&mut *tx).await?;
+    crate::routes::server_settings::bump_revision(&mut tx).await?;
+    tx.commit().await?;
     Ok(Json(
         json!({"server":profile.server,"public_key":profile.public_key,"can_edit":true}),
     ))

@@ -2,7 +2,7 @@
 # Copy to compose.deploy.yaml and configure .env. Does not manage relay/ID services.
 services:
   address-book:
-    image: local/rustdesk-address-book:0.6.2
+    image: local/rustdesk-address-book:0.7.0
     build:
       context: .
       dockerfile: Dockerfile

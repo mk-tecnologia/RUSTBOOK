@@ -2,7 +2,7 @@ services:
   hbbs:
     image: rustdesk/rustdesk-server:latest
     container_name: rustdesk-hbbs
-    command: hbbs -r rustdesk-hbbr:21117
+    command: ["hbbs", "-r", "${PUBLIC_RELAY_ENDPOINT:?Set the relay hostname:port reachable by clients}", "-k", "_"]
     volumes:
       - ./data/hbbs:/root
     ports:

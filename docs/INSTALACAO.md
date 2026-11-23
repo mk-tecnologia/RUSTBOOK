@@ -50,7 +50,7 @@ pelo cliente após cada atualização.
 
 Backups e imagens anteriores não são apagados automaticamente. Monitore o espaço
 em disco e mantenha cópias externas: um backup no mesmo disco não protege contra
-a perda do servidor. O instalador não configura TLS, firewall, hbbs ou hbbr.
+a perda do servidor. Por padrão, o instalador não configura TLS, firewall, hbbs ou hbbr. A aplicação opcional do relay por agente é descrita em [configuração do servidor](CONFIGURACAO-SERVIDOR.md).
 
 ## Atualização rápida e compilação opcional
 
@@ -169,3 +169,12 @@ O `docker-compose.yml` da raiz inclui hbbs/hbbr e destina-se à stack completa.
 Esses métodos têm configuração e procedimento de atualização próprios; o comando
 único reconhece automaticamente o cenário de Compose descrito acima, além de
 instalações novas e importações offline.
+
+## Stack completa e endereço público do relay
+
+Antes de usar `docker-compose.yml`, preencha `.env` com `PUBLIC_RELAY_ENDPOINT`
+(hostname:porta do hbbr alcançável pelos clientes), `JWT_SECRET` e `ADMIN_PASSWORD`.
+Use `.env.full-stack.example` como referência; valores obrigatórios vazios impedem
+iniciar com configuração incompleta. Não use nome Docker interno como relay para
+clientes externos. O instalador por comando único continua sendo da agenda; o
+agente opcional gerencia o hbbs existente mediante confirmação no painel.

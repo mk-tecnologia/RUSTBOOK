@@ -74,7 +74,7 @@ não bloqueia a tentativa de conexão. Para editar o dispositivo, use o lápis.
 
 ### Conexões com hbbs OSS e conta nativa logada (0.6.1+)
 
-Como administrador, abra **Devices → Connection settings** e informe:
+Na versão 0.7.0+, use **Server settings** (nas versões 0.6.x, **Devices → Connection settings**) e informe:
 
 - **ID server · TCP endpoint:** endereço do hbbs acessível pelos computadores dos
   operadores, com a porta de ID (normalmente `rustdesk.example.com:21116`). Esse
@@ -111,3 +111,11 @@ Para excluir uma tag, selecione-a no filtro e use o ícone de lixeira do box Tag
 As linhas mostram até duas tags e um contador das demais; o tooltip e a edição
 permitem consultar os nomes completos. Presença Offline reflete a resposta do hbbs
 para o ID cadastrado; confira todos os dígitos se outro ID conecta no cliente.
+
+## Configuração central (0.7.0+)
+
+Os boxes da agenda agora levam a **Server settings** e **Client setup**. O primeiro
+reúne presença e configuração de conexões, além do relay público anunciado pelo
+hbbs. O segundo mostra os quatro campos prontos para o cliente RustDesk. A agenda
+continua usando a mesma configuração de presença e a mesma Key já salvas. Veja
+[gerenciamento do servidor](CONFIGURACAO-SERVIDOR.md).

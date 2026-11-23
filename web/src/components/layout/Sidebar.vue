@@ -10,12 +10,14 @@ const navItems = computed(() => {
   const items = [
     { name: 'Dashboard', path: '/', icon: 'grid' },
     { name: 'Devices', path: '/address-book', icon: 'book' },
+    { name: 'Client setup', path: '/client-setup', icon: 'server' },
   ]
   if (auth.isAdmin) {
     items.push(
       { name: 'Users', path: '/users', icon: 'users' },
       { name: 'User groups', path: '/groups', icon: 'folder' },
       { name: 'Audit Log', path: '/audit-log', icon: 'list' },
+      { name: 'Server settings', path: '/server-settings', icon: 'server' },
     )
   }
   return items
@@ -66,6 +68,7 @@ function isActive(path: string) {
         <svg v-else-if="item.icon === 'list'" class="w-4 h-4 mr-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
           <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
         </svg>
+        <svg v-else-if="item.icon === 'server'" class="w-4 h-4 mr-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.7" d="M4 3h16v7H4zM4 14h16v7H4zM7 6.5h.01M7 17.5h.01M11 6.5h6M11 17.5h6" /></svg>
         {{ item.name }}
       </router-link>
     </nav>

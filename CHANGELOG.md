@@ -7,6 +7,23 @@ manifesto upstream é `0.1.0`; não são inventadas releases anteriores do upstr
 
 Sem alterações pendentes.
 
+## [0.7.0] - 2026-11-23
+
+- Painel administrativo unificado para ID público, relay anunciado, API, presença
+  e chave pública, preservando as configurações anteriores.
+- Página Client setup com os quatro campos dos clientes, cópia individual e resumo
+  de configuração, sem exportar tokens, chave privada ou endereços internos de presença.
+- Validação de endpoints/portas, aviso de relay privado e confirmação de uso interno/VPN.
+- Agente opcional no host para aplicar o relay ao hbbs com backup, preservação do
+  par Ed25519 e da imagem, verificação de volumes e rollback em caso de falha.
+- Ativação por `install latest --manage-hbbs /caminho/compose.yml`, sem reiniciar
+  hbbs/hbbr na instalação do agente. A aplicação exige confirmação no painel.
+- Estado salvo, relay em execução e relay persistido no Compose exibidos separadamente.
+- Diagnóstico TCP e de presença com indicação explícita de que não substitui teste
+  de autenticação do relay e conexão entre clientes externos.
+- Configurações com revisão para evitar escritas desatualizadas e eventos de auditoria.
+- Stack completa exige `PUBLIC_RELAY_ENDPOINT` explícito; não anuncia nome Docker interno.
+
 ## [0.6.2] - 2026-11-23
 
 - Boxes de presença, conexões nativas e tags lado a lado, com grade responsiva

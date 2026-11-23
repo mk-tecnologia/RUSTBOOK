@@ -12,7 +12,7 @@ A lista aberta atualiza a cada 30 segundos e ao voltar à janela.
 
 ## Configurar pelo painel (0.5.1+)
 
-Como administrador, abra **Devices → Presence settings**. Informe o endereço do
+Na versão 0.7.0+, abra **Server settings → Consulta de presença**. Nas versões 0.5/0.6, a opção fica em **Devices → Presence settings**. Informe o endereço do
 mesmo servidor de ID dos clientes com a porta NAT TCP, normalmente 21115, e clique
 em **Test and save**. O endereço pode ser domínio, IP ou nome de serviço Docker;
 não existe IP fixo no código. A conexão é testada a partir do servidor RUSTBOOK e

@@ -34,6 +34,7 @@ LABEL org.opencontainers.image.source="https://github.com/mk-tecnologia/RUSTBOOK
 RUN apt-get update && apt-get install -y ca-certificates && rm -rf /var/lib/apt/lists/*
 WORKDIR /app
 COPY --from=backend /app/target/release/rustdesk-address-book .
+COPY scripts/server_agent.py /app/server-agent.py
 RUN groupadd --gid 10001 rustdesk && useradd --uid 10001 --gid rustdesk --no-create-home rustdesk \
     && mkdir /data && chown rustdesk:rustdesk /data
 USER 10001:10001

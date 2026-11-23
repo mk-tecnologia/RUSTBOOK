@@ -6,9 +6,8 @@ import PeerGroupSection from '../components/peers/PeerGroupSection.vue'
 import TagPanel from '../components/tags/TagPanel.vue'
 import AddPeerDialog from '../components/peers/AddPeerDialog.vue'
 import OrganizationDialog from '../components/peers/OrganizationDialog.vue'
-import ConnectionSettings from '../components/peers/ConnectionSettings.vue'
+import ServerOverview from '../components/server/ServerOverview.vue'
 import type { NativeConnection } from '../utils/connection'
-import PresenceSettings from '../components/peers/PresenceSettings.vue'
 import ErrorNotice from '../components/ui/ErrorNotice.vue'
 
 const store = useAddressBookStore()
@@ -81,8 +80,7 @@ async function clearFilters() { search.value = ''; clearTimeout(timer); await st
       </div>
     </div>
     <div class="grid items-stretch gap-4" style="grid-template-columns: repeat(auto-fit, minmax(min(100%, 16rem), 1fr))">
-      <PresenceSettings @changed="store.refresh" />
-      <ConnectionSettings @changed="connection = $event" />
+      <ServerOverview @changed="connection = $event" />
       <TagPanel :tags="store.tags" :selected-tag="store.selectedTag" :busy="saving || !store.abGuid" @select="selectTag" @create="editOrganization('tag')" @delete="removeTag" />
     </div>
     <ErrorNotice :message="actionError" />

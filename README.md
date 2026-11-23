@@ -23,7 +23,7 @@ Se estiver usando uma conta comum, entre como root com `su -` antes de executar.
 **O mesmo comando instala e atualiza.** Ele baixa a imagem pronta mais recente
 publicada pela CI para **amd64 ou arm64**, verifica sua integridade e aplica a
 atualização. **Não compila no servidor.** Se o mesmo commit já estiver em execução
-e saudável, termina sem baixar a imagem ou reiniciar. Versão atual: **[0.6.2](https://github.com/mk-tecnologia/RUSTBOOK/releases/tag/v0.6.2)**.
+e saudável, termina sem baixar a imagem ou reiniciar. Versão atual: **[0.7.0](https://github.com/mk-tecnologia/RUSTBOOK/releases/tag/v0.7.0)**.
 
 Para configurar Online/Offline pelo servidor de ID, veja [Presença dos dispositivos](docs/PRESENCA.md). Relatórios antigos da API não significam que o peer está offline.
 
@@ -41,6 +41,23 @@ O instalador:
 reconhece a instalação Compose e atualiza no diretório existente, sem importação
 manual. Veja os [requisitos de reconhecimento](docs/INSTALACAO.md#migrar-uma-agenda-existente).
 Homologue a atualização com seu cliente RustDesk antes de aplicá-la em produção.
+
+## Configurar servidor e clientes
+
+O menu **Server settings** reúne os endereços públicos de ID, relay e API, a Key
+pública e a consulta interna de presença. **Client setup** mostra os quatro campos
+para preencher no RustDesk, com cópia individual e resumo para compartilhar.
+
+Para habilitar também a aplicação do relay ao hbbs pelo painel, execute uma vez
+como root, informando o Compose existente:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/mk-tecnologia/RUSTBOOK/main/scripts/install.py | python3 - install latest --manage-hbbs /opt/rustdesk/compose.yml
+```
+
+A ativação instala um agente restrito no host e não reinicia hbbs/hbbr. Depois de
+salvar os valores, use **Aplicar relay ao hbbs** no painel. A chave existente é
+preservada. Veja [configuração e aplicação no servidor](docs/CONFIGURACAO-SERVIDOR.md).
 
 ## Organizar dispositivos
 

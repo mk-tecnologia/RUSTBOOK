@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import { after, test } from 'node:test'
 import { createServer } from 'vite'
-import { createSSRApp } from 'vue'
+import { createSSRApp, h } from 'vue'
 import { renderToString } from 'vue/server-renderer'
 import { createPinia, disposePinia } from 'pinia'
 
@@ -23,11 +23,11 @@ test('device folders show full counts and tag filters hide empty folders', async
   try {
     const store = useAddressBookStore(pinia)
     store.$patch({ abGuid: 'fixture', overviewReady: true, totalPeers: 3, ungroupedCount: 1, groups, tags })
-    const app = createSSRApp(View); app.use(pinia)
+    const app = createSSRApp(View); app.use(pinia); app.component('RouterLink', { props: ['to'], setup: (props, { slots }) => () => h('a', { href: props.to }, slots.default?.()) })
     const html = await renderToString(app)
     for (const text of ['BR SUL', 'CCS', 'Ungrouped', 'All tags', 'New group', '3 devices']) assert.ok(html.includes(text), text)
     store.query = 'Office'
-    const filteredApp = createSSRApp(View); filteredApp.use(pinia)
+    const filteredApp = createSSRApp(View); filteredApp.use(pinia); filteredApp.component('RouterLink', { props: ['to'], setup: (props, { slots }) => () => h('a', { href: props.to }, slots.default?.()) })
     const filtered = await renderToString(filteredApp)
     assert.ok(filtered.includes('BR SUL'))
     assert.ok(!filtered.includes('>CCS<'))

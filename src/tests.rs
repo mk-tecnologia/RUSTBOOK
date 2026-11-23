@@ -1746,3 +1746,225 @@ async fn native_connection_settings_require_admin_and_preserve_public_key() {
         ""
     );
 }
+
+#[tokio::test]
+async fn unified_server_settings_validate_atomically_and_export_only_client_fields() {
+    let f = Fixture::new().await;
+    for (method, path) in [
+        ("GET", "/api/admin/server-settings"),
+        ("PUT", "/api/admin/server-settings"),
+        ("POST", "/api/admin/server-settings/check"),
+        ("POST", "/api/admin/server-settings/apply-relay"),
+    ] {
+        assert_eq!(
+            f.call(method, path, &f.member, json!({"revision":""}))
+                .await
+                .0,
+            StatusCode::FORBIDDEN
+        );
+    }
+    assert_eq!(
+        f.call("GET", "/api/client-configuration", "", Value::Null)
+            .await
+            .0,
+        StatusCode::UNAUTHORIZED
+    );
+    let (status, initial) = f
+        .call("GET", "/api/admin/server-settings", &f.admin, Value::Null)
+        .await;
+    assert_eq!(status, StatusCode::OK);
+    let mut settings = initial["settings"].clone();
+    settings["id_server"] = json!("id.example.com:21116");
+    settings["relay_server"] = json!("relay.example.com:21117");
+    settings["api_url"] = json!("https://api.example.com");
+    settings["public_key"] = json!("AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=");
+    let (status, saved) = f
+        .call(
+            "PUT",
+            "/api/admin/server-settings",
+            &f.admin,
+            settings.clone(),
+        )
+        .await;
+    assert_eq!(status, StatusCode::OK);
+    assert!(!saved["settings"]["revision"].as_str().unwrap().is_empty());
+    assert_eq!(
+        f.call("PUT", "/api/admin/server-settings", &f.admin, settings)
+            .await
+            .0,
+        StatusCode::CONFLICT
+    );
+    let (_, exported) = f
+        .call("GET", "/api/client-configuration", &f.member, Value::Null)
+        .await;
+    assert_eq!(exported["relay_server"], "relay.example.com:21117");
+    assert_eq!(exported["api_url"], "https://api.example.com");
+    assert_eq!(exported.as_object().unwrap().len(), 5);
+    assert!(exported.get("presence_server").is_none());
+    assert!(exported.get("runtime").is_none());
+    let (_, legacy) = f
+        .call("GET", "/api/connection-settings", &f.member, Value::Null)
+        .await;
+    assert_eq!(legacy["server"], "id.example.com:21116");
+    for (field, value) in [
+        ("relay_server", "user@host:21117"),
+        ("relay_server", "host:0"),
+        ("api_url", "https://host/path"),
+        ("api_url", "https://user:pass@host"),
+        ("public_key", "private-or-invalid"),
+    ] {
+        let mut invalid = saved["settings"].clone();
+        invalid[field] = json!(value);
+        assert_eq!(
+            f.call("PUT", "/api/admin/server-settings", &f.admin, invalid)
+                .await
+                .0,
+            StatusCode::BAD_REQUEST
+        );
+    }
+    assert_eq!(
+        f.call("GET", "/api/admin/server-settings", &f.admin, Value::Null)
+            .await
+            .1["settings"],
+        saved["settings"]
+    );
+    assert_eq!(
+        f.call(
+            "POST",
+            "/api/admin/server-settings/apply-relay",
+            &f.admin,
+            json!({"revision":saved["settings"]["revision"]})
+        )
+        .await
+        .0,
+        StatusCode::BAD_REQUEST
+    );
+    f.call("PUT","/api/admin/connection-settings",&f.admin,json!({"server":"id.example.com:21116","public_key":"AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA="})).await;
+    assert_eq!(
+        f.call(
+            "POST",
+            "/api/admin/server-settings/apply-relay",
+            &f.admin,
+            json!({"revision":saved["settings"]["revision"]})
+        )
+        .await
+        .0,
+        StatusCode::CONFLICT
+    );
+}
+
+#[tokio::test]
+async fn private_relay_requires_acknowledgement_and_diagnostics_are_not_authentication_claims() {
+    let f = Fixture::new().await;
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let endpoint = listener.local_addr().unwrap().to_string();
+    let mut settings = f
+        .call("GET", "/api/admin/server-settings", &f.admin, Value::Null)
+        .await
+        .1["settings"]
+        .clone();
+    settings["relay_server"] = json!(endpoint);
+    let (_, saved) = f
+        .call("PUT", "/api/admin/server-settings", &f.admin, settings)
+        .await;
+    assert!(!saved["warnings"].as_array().unwrap().is_empty());
+    let (status, error) = f
+        .call(
+            "POST",
+            "/api/admin/server-settings/apply-relay",
+            &f.admin,
+            json!({"revision":saved["settings"]["revision"]}),
+        )
+        .await;
+    assert_eq!(status, StatusCode::BAD_REQUEST);
+    assert!(error["error"].as_str().unwrap().contains("Private relay"));
+    let (status, checked) = f
+        .call(
+            "POST",
+            "/api/admin/server-settings/check",
+            &f.admin,
+            json!({}),
+        )
+        .await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(checked["relay_server"], "tcp_reachable");
+    assert_eq!(checked["presence_server"], "not_configured");
+    assert!(checked["notice"]
+        .as_str()
+        .unwrap()
+        .contains("does not validate relay authentication"));
+}
+
+#[cfg(unix)]
+#[tokio::test]
+async fn server_panel_applies_only_saved_relay_through_restricted_agent_protocol() {
+    use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
+    let mut f = Fixture::new().await;
+    let directory = std::env::temp_dir().join(format!("rbipc-{}", uuid::Uuid::new_v4()));
+    std::fs::create_dir(&directory).unwrap();
+    let path = directory.join(".rustbook-server-agent.sock");
+    let listener = tokio::net::UnixListener::bind(&path).unwrap();
+    let requests = std::sync::Arc::new(std::sync::Mutex::new(Vec::<Value>::new()));
+    let received = requests.clone();
+    let server = tokio::spawn(async move {
+        loop {
+            let (stream, _) = listener.accept().await.unwrap();
+            let (read, mut write) = stream.into_split();
+            let mut line = String::new();
+            BufReader::new(read).read_line(&mut line).await.unwrap();
+            let request: Value = serde_json::from_str(&line).unwrap();
+            received.lock().unwrap().push(request.clone());
+            let response = if request["action"] == "status" {
+                json!({"connected":true,"relay":"old.example.com:21117","can_apply":true,"public_key":"AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA="})
+            } else {
+                json!({"ok":true,"changed":true,"relay":request["relay"],"keys_preserved":true})
+            };
+            write
+                .write_all(format!("{response}\n").as_bytes())
+                .await
+                .unwrap();
+        }
+    });
+    let mut config: Config = toml::from_str("").unwrap();
+    config.jwt_secret = "test-secret-longer-than-thirty-two-characters".into();
+    config.db_path = directory.join("db.sqlite3").to_string_lossy().into();
+    f.app = crate::routes::api_router().with_state(AppState {
+        db: f.db.clone(),
+        config,
+    });
+    let (_, initial) = f
+        .call("GET", "/api/admin/server-settings", &f.admin, Value::Null)
+        .await;
+    assert_eq!(initial["agent"]["connected"], true);
+    let mut settings = initial["settings"].clone();
+    settings["relay_server"] = json!("relay.example.com:21117");
+    let (_, saved) = f
+        .call("PUT", "/api/admin/server-settings", &f.admin, settings)
+        .await;
+    let mut wrong_key = saved["settings"].clone();
+    wrong_key["id_server"] = json!("id.example.com:21116");
+    wrong_key["public_key"] = json!("//////////////////////////////////////////8=");
+    assert_eq!(
+        f.call("PUT", "/api/admin/server-settings", &f.admin, wrong_key)
+            .await
+            .0,
+        StatusCode::BAD_REQUEST
+    );
+    let (status,result)=f.call("POST","/api/admin/server-settings/apply-relay",&f.admin,json!({"revision":saved["settings"]["revision"],"relay":"ignored.example.com:21117","command":"must-not-forward"})).await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(result["keys_preserved"], true);
+    let applied: Vec<_> = requests
+        .lock()
+        .unwrap()
+        .iter()
+        .filter(|r| r["action"] == "apply_relay")
+        .cloned()
+        .collect();
+    assert_eq!(
+        applied,
+        vec![json!({"action":"apply_relay","relay":"relay.example.com:21117"})]
+    );
+    server.abort();
+    std::fs::remove_file(path).unwrap();
+    std::fs::remove_dir(directory).unwrap();
+}

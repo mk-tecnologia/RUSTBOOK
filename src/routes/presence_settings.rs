@@ -51,8 +51,11 @@ async fn save(
     if report["status"] == "unreachable" {
         return Err(ApiError::BadRequest("Unable to query the ID server. Check its NAT TCP port (usually 21115) and connectivity from this server. The previous configuration was kept.".into()));
     }
+    let mut tx = state.db.begin().await?;
     sqlx::query("INSERT INTO server_settings(key, value) VALUES ('rendezvous_server', ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value")
-        .bind(endpoint).execute(&state.db).await?;
+        .bind(endpoint).execute(&mut *tx).await?;
+    crate::routes::server_settings::bump_revision(&mut tx).await?;
+    tx.commit().await?;
     Ok(Json(report))
 }
 async fn reset(
@@ -60,8 +63,11 @@ async fn reset(
     AuthUser(claims): AuthUser,
 ) -> Result<Json<Value>, ApiError> {
     admin(&claims)?;
+    let mut tx = state.db.begin().await?;
     sqlx::query("DELETE FROM server_settings WHERE key = 'rendezvous_server'")
-        .execute(&state.db)
+        .execute(&mut *tx)
         .await?;
+    crate::routes::server_settings::bump_revision(&mut tx).await?;
+    tx.commit().await?;
     Ok(Json(describe(&state.config.rendezvous_server, false).await))
 }

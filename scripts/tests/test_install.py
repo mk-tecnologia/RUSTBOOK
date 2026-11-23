@@ -513,6 +513,40 @@ class InstallTests(unittest.TestCase):
         self.app.hbbs_server = ""
         self.assertEqual(self.app.document("image")["services"]["address-book"]["environment"]["RUSTDESK_AB_RENDEZVOUS_SERVER"], "")
 
+    def test_backup_and_rollback_preserve_live_agent_socket_without_copying_it(self):
+        import socket
+        short = tempfile.TemporaryDirectory(dir="/tmp")
+        self.addCleanup(short.cleanup)
+        self.root = Path(short.name) / "managed"
+        self.root.mkdir()
+        self.app = installer.Installer(self.root, build_locally=True)
+        patch.object(self.app, "wait_ready").start()
+        self.existing()
+        path = self.app.data / installer.AGENT_SOCKET
+        with socket.socket(socket.AF_UNIX) as server:
+            server.bind(str(path)); server.listen(1)
+            backup = self.app.backup()
+            self.assertFalse((backup / "data" / installer.AGENT_SOCKET).exists())
+            self.app.restore(backup, self.previous)
+            self.assertTrue(path.is_socket())
+            with socket.socket(socket.AF_UNIX) as client:
+                client.settimeout(1); client.connect(str(path))
+            self.assertEqual((self.app.data / "db.sqlite3").read_bytes(), b"original database")
+
+    def test_enabling_management_copies_agent_from_verified_running_image(self):
+        original = self.runner.side_effect
+        def run_agent(*args, capture=False):
+            if args[:2] == ("docker", "cp"):
+                self.calls.append(args)
+                Path(args[-1]).write_text("# Test agent fixture\n")
+                return
+            return original(*args, capture=capture)
+        self.runner.side_effect = run_agent
+        self.app.enable_server_management(Path("/opt/rustdesk/compose.yml"))
+        self.assertTrue((self.root / "server-agent.py").exists())
+        self.assertTrue(any("--compose" in call and "/opt/rustdesk/compose.yml" in call for call in self.calls))
+        self.assertFalse(self.compose_calls("up"))
+
 
 if __name__ == "__main__":
     unittest.main()
